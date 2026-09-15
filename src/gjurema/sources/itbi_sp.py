@@ -200,6 +200,10 @@ def clean(raw: pd.DataFrame) -> pd.DataFrame:
     # "BLOCO B" e afins; o CEP é a chave geográfica confiável.
     frame = frame.drop(columns=["bairro"], errors="ignore")
     frame["logradouro"] = _strip_accents(frame["logradouro"])
+    # Complemento vem como "AP 71" numa planilha e como 71 em outra: sem tipo
+    # único o Parquet não fecha.
+    for column in ("complemento", "sql", "uso", "natureza"):
+        frame[column] = frame[column].fillna("").astype(str)
     frame["numero"] = pd.to_numeric(frame["numero"], errors="coerce").fillna(0).astype(int)
     cep = pd.to_numeric(frame["cep"], errors="coerce")
     frame["cep"] = cep.fillna(0).astype("int64").astype(str).str.zfill(8)
