@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
@@ -23,21 +24,28 @@ FEATURES_PATH = PROCESSED_DIR / "features.parquet"
 MARKET_INDEX_PATH = PROCESSED_DIR / "indice_mercado.parquet"
 FORECAST_PATH = PROCESSED_DIR / "valorizacao_projetada.parquet"
 METRICS_PATH = ARTIFACTS_DIR / "metrics.json"
+MODEL_PATH = ARTIFACTS_DIR / "fair_price.json"
+MODEL_META_PATH = ARTIFACTS_DIR / "fair_price_meta.json"
+
+
+def version(*paths: Path) -> tuple[float, ...]:
+    """Chave de cache que muda quando o pipeline regrava os artefatos."""
+    return tuple(path.stat().st_mtime if path.exists() else 0.0 for path in paths)
 
 
 @st.cache_data(show_spinner=False)
-def load_features() -> pd.DataFrame:
+def load_features(data_version: tuple[float, ...]) -> pd.DataFrame:
     return pd.read_parquet(FEATURES_PATH)
 
 
 @st.cache_data(show_spinner=False)
-def load_table(path_name: str) -> pd.DataFrame:
+def load_table(path_name: str, data_version: tuple[float, ...]) -> pd.DataFrame:
     path = PROCESSED_DIR / path_name
     return pd.read_parquet(path) if path.exists() else pd.DataFrame()
 
 
 @st.cache_resource(show_spinner=False)
-def load_model() -> price_model.FairPriceModel:
+def load_model(artifact_version: tuple[float, ...]) -> price_model.FairPriceModel:
     return price_model.FairPriceModel.load(ARTIFACTS_DIR)
 
 
@@ -58,9 +66,9 @@ if not FEATURES_PATH.exists():
     st.error("Base não encontrada. Rode `python -m gjurema.pipeline all` antes de abrir o dashboard.")
     st.stop()
 
-features = load_features()
-market_index = load_table("indice_mercado.parquet")
-projections = load_table("valorizacao_projetada.parquet")
+features = load_features(version(FEATURES_PATH))
+market_index = load_table("indice_mercado.parquet", version(MARKET_INDEX_PATH))
+projections = load_table("valorizacao_projetada.parquet", version(FORECAST_PATH))
 snapshot = features.sort_values("date").groupby(["city", "typology"], as_index=False).tail(1)
 reference_date = features["date"].max().strftime("%m/%Y")
 
@@ -91,7 +99,7 @@ if page == "Preço justo e oportunidade":
         st.warning("Sem dados de FipeZAP para essa combinação de cidade e tipologia.")
         st.stop()
 
-    model = load_model()
+    model = load_model(version(MODEL_PATH, MODEL_META_PATH))
     interval = model.predict_interval(row).iloc[0]
     observed_m2 = float(row["venda_preco_m2"].iloc[0])
 

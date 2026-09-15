@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 NON_CITY_SHEETS = {"Resumo", "Aux", "Índice FipeZAP"}
 
+# O endpoint da Fipe responde 403 ao User-Agent padrão do requests.
+DOWNLOAD_HEADERS = {"User-Agent": "GJurema/0.1 (+pipeline de precificacao imobiliaria)"}
+
 # (coluna inicial, segmento, métrica) para o bloco residencial da planilha.
 # Cada bloco ocupa cinco colunas: Total, 1D, 2D, 3D, 4D.
 RESIDENTIAL_BLOCKS = [
@@ -47,7 +50,7 @@ def download(destination: Path | None = None, force: bool = False) -> Path:
         logger.info("FipeZAP já em cache: %s", destination)
         return destination
     logger.info("Baixando FipeZAP de %s", FIPEZAP_URL)
-    response = requests.get(FIPEZAP_URL, timeout=HTTP_TIMEOUT)
+    response = requests.get(FIPEZAP_URL, headers=DOWNLOAD_HEADERS, timeout=HTTP_TIMEOUT)
     response.raise_for_status()
     destination.write_bytes(response.content)
     return destination

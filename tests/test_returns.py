@@ -56,3 +56,14 @@ def test_simulate_and_scenarios_agree_on_base_case():
     simulation = returns.simulate(600_000, 3_000, down_payment_rate=0.5)
     scenario = returns.scenarios(600_000, 3_000, down_payment_rate=0.5)
     assert simulation["horizontes"][10]["tir"] == pytest.approx(scenario["base"]["tir"], abs=1e-6)
+
+
+def test_debt_service_stops_after_financing_term():
+    flows = returns.cash_flows(
+        600_000,
+        3_000,
+        years=35,
+        down_payment_rate=0.5,
+        financing_years=30,
+    )
+    assert flows[30] < flows[31]

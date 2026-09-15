@@ -174,7 +174,8 @@ def train(
     metrics = {
         "r2_log": float(r2_score(y_valid, predicted)),
         "mae_log": float(mean_absolute_error(y_valid, predicted)),
-        "mape_pct": float(np.mean(np.abs(np.expm1(residuals))) * 100),
+        # residuo = log(real) - log(previsto); erro percentual sobre o real.
+        "mape_pct": float(np.mean(np.abs(np.expm1(-residuals))) * 100),
         "n_train": int(len(train_set)),
         "n_valid": int(len(valid_set)),
         "valid_start": str(valid_set["date"].min().date()),

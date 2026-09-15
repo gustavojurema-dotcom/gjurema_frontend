@@ -100,7 +100,8 @@ def cash_flows(
         rent = monthly_rent * (1 + assumptions.rent_adjustment_rate) ** (year - 1)
         market_value = purchase_price * (1 + assumptions.appreciation_rate) ** year
         income = net_operating_income(rent, market_value, assumptions)
-        flows.append(income - annual_debt_service)
+        debt_service = annual_debt_service if year <= financing_years else 0.0
+        flows.append(income - debt_service)
 
     exit_value = purchase_price * (1 + assumptions.appreciation_rate) ** years
     outstanding = 0.0
