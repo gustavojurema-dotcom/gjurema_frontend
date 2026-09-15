@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GJurema · Inteligência de dados imobiliários</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0D1B2A; --navy-2:#152536; --navy-3:#1C2E42;
+  --gold:#A1862E; --gold-2:#C6A339; --gold-soft:#F4EEDC;
+  --steel:#4A6A8A; --cream:#F0EDE6;
+  --bg:#F5F3EE; --card:#fff; --card-2:#FAF8F4;
+  --ink:#0D1B2A; --ink-2:#54677C; --ink-3:#8A9AAB;
+  --line:#E4E1D8; --hair:#EFEDE6;
+  --pos:#2E7D5B; --warn:#A1862E; --neg:#B5462F;
+  --r:14px; --r-lg:18px; --r-xl:24px;
+  --sh:0 1px 2px rgba(13,27,42,.05),0 12px 30px rgba(13,27,42,.07);
+  --sh-sm:0 1px 2px rgba(13,27,42,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:Manrope,system-ui,sans-serif;
+  font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.shell{max-width:1220px;margin:0 auto;padding:0 24px 80px}
+.tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.eyebrow{font-family:Jost,sans-serif;font-size:11px;font-weight:500;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-3)}
+.pos{color:var(--pos)}.neg{color:var(--neg)}.warn{color:var(--warn)}.mut{color:var(--ink-3)}
+
+/* topo */
+.topbar{display:flex;align-items:center;gap:16px;margin:20px 0 0;padding:16px 26px;
+  background:var(--navy);border-radius:var(--r-lg);box-shadow:var(--sh);position:relative;overflow:hidden}
+.topbar::after{content:"";position:absolute;left:26px;right:26px;bottom:0;height:1px;
+  background:linear-gradient(90deg,var(--gold),transparent)}
+.brand{display:flex;align-items:center;gap:13px}
+.dia{width:38px;height:38px;position:relative;flex:none}
+.dia i{position:absolute;inset:0;border:1px solid rgba(240,237,230,.75);transform:rotate(45deg)}
+.dia i.g{inset:7px;border-color:var(--gold)}
+.dia b{position:absolute;inset:0;display:grid;place-items:center;font-family:Jost,sans-serif;
+  font-weight:400;font-size:15px;color:#fff;letter-spacing:.02em}
+.bt b{display:block;font-family:Jost,sans-serif;font-weight:400;font-size:20px;
+  letter-spacing:.17em;color:var(--cream);line-height:1}
+.bt em{display:block;font-style:normal;font-family:Jost,sans-serif;font-size:10px;
+  letter-spacing:.22em;text-transform:uppercase;color:var(--steel);margin-top:5px}
+.sp{flex:1}
+.chip{font-family:Jost,sans-serif;font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;
+  padding:6px 13px;border-radius:99px;background:rgba(255,255,255,.05);
+  border:1px solid rgba(240,237,230,.16);color:var(--cream)}
+.chip.gold{border-color:rgba(198,163,57,.5);color:var(--gold-2);background:rgba(198,163,57,.08)}
+
+/* persona */
+.pagehead{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;
+  flex-wrap:wrap;padding:32px 0 20px}
+h1{font-family:Jost,sans-serif;font-size:clamp(28px,4.2vw,40px);font-weight:400;
+  line-height:1.06;margin-top:10px}
+.switch{display:inline-flex;gap:4px;padding:5px;background:#fff;border:1px solid var(--line);
+  border-radius:99px;box-shadow:var(--sh-sm)}
+.switch div{font-family:Jost,sans-serif;padding:10px 22px;font-size:13px;font-weight:500;
+  letter-spacing:.06em;color:var(--ink-2);border-radius:99px;cursor:pointer;white-space:nowrap;
+  transition:.14s}
+.switch div:hover{background:var(--card-2)}
+.switch div.on{background:var(--navy);color:var(--cream)}
+
+/* abas internas */
+.tabs{display:flex;gap:26px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin:22px 0 26px}
+.tabs span{font-family:Jost,sans-serif;font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);cursor:pointer;padding-bottom:12px;border-bottom:2px solid transparent;
+  margin-bottom:-1px;transition:.14s}
+.tabs span:hover{color:var(--ink-2)}
+.tabs span.on{color:var(--navy);border-bottom-color:var(--gold)}
+
+/* cartões */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:22px 24px;box-shadow:var(--sh-sm);margin-bottom:16px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.ct{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.ct h3{font-family:Jost,sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.src{font-family:Jost,sans-serif;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding:4px 9px;border-radius:99px;white-space:nowrap}
+.src.pub{background:#E9F1EC;color:#255F47}
+.src.cli{background:var(--gold-soft);color:#7A6520}
+
+/* hero precificação */
+.hero{background:var(--navy);color:var(--cream);border-radius:var(--r-xl);padding:30px 32px;
+  box-shadow:var(--sh);position:relative;overflow:hidden;margin-bottom:16px}
+.hero::before{content:"";position:absolute;right:-50px;top:50%;transform:translateY(-50%) rotate(45deg);
+  width:200px;height:200px;border:1px solid rgba(240,237,230,.09)}
+.hero::after{content:"";position:absolute;right:-4px;top:50%;transform:translateY(-50%) rotate(45deg);
+  width:118px;height:118px;border:1px solid rgba(161,134,46,.3)}
+.hero .eyebrow{color:rgba(240,237,230,.55)}
+.hgrid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:34px;position:relative}
+.big{font-family:Jost,sans-serif;font-size:clamp(36px,5.6vw,52px);font-weight:400;
+  line-height:1;margin:14px 0 6px;color:#fff}
+.big small{font-size:.4em;color:rgba(240,237,230,.6);margin-left:6px}
+.faixa{margin-top:18px}
+.faixa .bar{height:10px;border-radius:99px;background:rgba(240,237,230,.14);position:relative;margin:10px 0 8px}
+.faixa .fill{position:absolute;top:0;bottom:0;left:22%;right:26%;border-radius:99px;
+  background:linear-gradient(90deg,rgba(161,134,46,.5),var(--gold-2))}
+.faixa .pin{position:absolute;top:-4px;bottom:-4px;left:52%;width:2px;background:#fff}
+.faixa .lab{display:flex;justify-content:space-between;font-size:12px;color:rgba(240,237,230,.6)}
+.ver{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:99px;
+  font-weight:700;font-size:13.5px;margin-top:6px}
+.ver.ok{background:rgba(111,211,164,.14);color:#7BE3B3;border:1px solid rgba(111,211,164,.35)}
+.hstats{display:flex;flex-direction:column;gap:1px;background:rgba(240,237,230,.09);
+  border-radius:12px;overflow:hidden;align-self:start}
+.hstats div{display:flex;justify-content:space-between;gap:12px;background:var(--navy-2);
+  padding:12px 16px;font-size:13.5px}
+.hstats span{color:rgba(240,237,230,.6)}
+.hstats b{font-weight:600}
+
+/* KPI */
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:18px 20px;box-shadow:var(--sh-sm);border-top:2px solid var(--gold)}
+.kpi .n{font-family:Jost,sans-serif;font-size:26px;font-weight:400;margin:10px 0 4px;line-height:1.05}
+.kpi .s{font-size:12.5px;color:var(--ink-2);font-weight:600}
+
+/* seletores */
+.filtros{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+select{background:#fff;border:1px solid var(--line);border-radius:99px;padding:9px 16px;
+  font-family:Manrope,sans-serif;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;outline:none}
+select:focus{border-color:var(--gold)}
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill{padding:7px 15px;border-radius:99px;border:1px solid var(--line);background:#fff;
+  font-size:12.5px;font-weight:700;cursor:pointer;color:var(--ink-2);user-select:none;transition:.14s;
+  display:flex;align-items:center;gap:7px}
+.pill i{width:9px;height:9px;border-radius:50%;background:var(--line)}
+.pill.on{border-color:var(--navy);background:var(--navy);color:var(--cream)}
+.pill.on i{background:currentColor}
+
+/* tabelas */
+.tb{width:100%;border-collapse:collapse;font-size:13.5px}
+.tb th{font-family:Jost,sans-serif;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);text-align:left;padding:0 12px 11px;border-bottom:1px solid var(--hair);font-weight:500}
+.tb td{padding:11px 12px;border-bottom:1px solid var(--hair)}
+.tb tr:last-child td{border-bottom:none}
+.tb tr:hover td{background:var(--card-2)}
+.tb .r{text-align:right}
+.tb .nm{font-weight:700}
+.rk{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;
+  background:var(--card-2);font-size:11px;font-weight:800;color:var(--ink-3);margin-right:9px}
+.rk.top{background:var(--navy);color:var(--cream)}
+.bar-in{height:6px;border-radius:99px;background:var(--hair);overflow:hidden;min-width:70px}
+.bar-in i{display:block;height:100%;border-radius:99px;background:var(--gold)}
+
+.wrapc{position:relative;height:280px}
+.vazio{padding:34px;text-align:center;color:var(--ink-3);font-size:13.5px;
+  border:1px dashed var(--line);border-radius:var(--r);background:var(--card-2)}
+.vazio b{display:block;color:var(--ink);margin-bottom:6px;font-size:14.5px}
+.hide{display:none}
+.foot{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-top:40px;
+  padding-top:22px;border-top:1px solid var(--line);font-family:Jost,sans-serif;font-size:10.5px;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+@media(max-width:980px){.grid2,.grid3,.grid4,.hgrid{grid-template-columns:1fr}}
+</style>
+
+<div class="shell">
+
+<header class="topbar">
+  <div class="brand">
+    <span class="dia"><i></i><i class="g"></i><b>GJ</b></span>
+    <span class="bt"><b>GJUREMA</b><em>Inteligência de dados imobiliários</em></span>
+  </div>
+  <div class="sp"></div>
+  <span class="chip">SÃO PAULO</span>
+  <span class="chip gold" id="chip-base">CARREGANDO ITBI…</span>
+</header>
+
+<div class="pagehead">
+  <div>
+    <div class="eyebrow">Painel</div>
+    <h1 id="titulo">Carteira e precificação</h1>
+  </div>
+  <div class="switch">
+    <div class="on" data-p="inv">Investidor</div>
+    <div data-p="mkt">Construtora &amp; Corretor</div>
+  </div>
+</div>
+
+<!-- ══════════════ INVESTIDOR ══════════════ -->
+<div id="inv">
+<div class="tabs" data-g="inv">
+  <span class="on" data-t="i1">Precificação</span>
+  <span data-t="i2">Evolução de preço</span>
+  <span data-t="i3">Rentabilidade vs. mercado</span>
+  <span data-t="i4">Composição da carteira</span>
+  <span data-t="i5">Ranking de valorização</span>
+</div>
+
+<!-- precificação -->
+<section id="i1">
+  <div class="filtros">
+    <select id="sel-imovel"></select>
+  </div>
+  <div class="hero"><div class="hgrid">
+    <div>
+      <div class="eyebrow" id="h-tit"></div>
+      <div class="big tnum" id="h-num"></div>
+      <div class="ver ok" id="h-ver"></div>
+      <div class="faixa">
+        <div class="bar"><div class="fill" id="h-fill"></div><div class="pin" id="h-pin"></div></div>
+        <div class="lab tnum"><span id="h-lo"></span><span>faixa do modelo (p10–p90)</span><span id="h-hi"></span></div>
+      </div>
+    </div>
+    <div class="hstats" id="h-stats"></div>
+  </div></div>
+  <div class="grid4" id="h-kpi"></div>
+  <div class="card" style="margin-top:16px">
+    <div class="ct"><h3>Fluxo de pagamento contratado</h3><span class="src cli">Contrato</span></div>
+    <table class="tb"><thead><tr><th>Série</th><th class="r">Valor</th><th class="r">% do total</th></tr></thead>
+    <tbody id="h-fluxo"></tbody></table>
+  </div>
+</section>
+
+<!-- evolução -->
+<section id="i2" class="hide">
+  <div class="card">
+    <div class="ct"><h3>Evolução do preço mediano por m² total</h3><span class="src pub">ITBI público</span></div>
+    <div class="filtros">
+      <select id="ev-nivel">
+        <option value="predio">Prédio</option>
+        <option value="bairro">Bairro</option>
+        <option value="cidade">Cidade · São Paulo</option>
+      </select>
+      <select id="ev-comp"><option>Comparar com bairro e cidade</option><option>Só o selecionado</option></select>
+    </div>
+    <div class="wrapc"><canvas id="c-evol"></canvas></div>
+    <p class="mut" style="font-size:12.5px;margin-top:12px" id="ev-nota"></p>
+  </div>
+  <div class="card">
+    <div class="ct"><h3>Evolução por construtora</h3><span class="src cli">Requer dados do cliente</span></div>
+    <div class="vazio"><b>Construtora não existe no ITBI</b>
+      A Prefeitura omite razão social por sigilo fiscal. Este recorte exige a base de lançamentos
+      (Embraesp) ou os dados da própria incorporadora.</div>
+  </div>
+</section>
+
+<!-- rentabilidade -->
+<section id="i3" class="hide">
+  <div class="card">
+    <div class="ct"><h3>Retorno acumulado · imóvel vs. índices</h3><span class="src pub">ITBI + BCB</span></div>
+    <p class="mut" style="font-size:13px;margin:-6px 0 14px" id="rent-nota">Selecione os índices para comparar.</p>
+    <div class="pills" id="idx"></div>
+    <div class="wrapc" style="margin-top:18px"><canvas id="c-rent"></canvas></div>
+  </div>
+  <div class="grid4" id="kpi-rent"></div>
+</section>
+
+<!-- composição -->
+<section id="i4" class="hide">
+  <div class="filtros">
+    <select id="comp-dim">
+      <option value="tipo">Por tipo</option>
+      <option value="bairro">Por bairro</option>
+      <option value="quartos">Por quantidade de quartos</option>
+      <option value="cidade">Por cidade</option>
+      <option value="construtora">Por construtora</option>
+    </select>
+  </div>
+  <div class="grid2">
+    <div class="card"><div class="ct"><h3>Composição da carteira</h3><span class="src cli">Dados do cliente</span></div>
+      <div class="wrapc"><canvas id="c-comp"></canvas></div></div>
+    <div class="card"><div class="ct"><h3>Detalhamento</h3><span class="src cli">Dados do cliente</span></div>
+      <table class="tb"><thead><tr><th>Segmento</th><th class="r">Ativos</th><th class="r">Valor</th><th class="r">%</th></tr></thead>
+      <tbody id="tb-comp"></tbody></table></div>
+  </div>
+</section>
+
+<!-- ranking valorização -->
+<section id="i5" class="hide">
+  <div class="filtros">
+    <select id="rk-dim">
+      <option value="bairro">Ranking por bairro</option>
+      <option value="imovel">Ranking por imóvel da carteira</option>
+      <option value="quartos">Ranking por quantidade de quartos</option>
+      <option value="construtora">Ranking por construtora</option>
+    </select>
+  </div>
+  <div class="card"><div class="ct"><h3 id="rk-tit">Valorização</h3><span class="src pub" id="rk-src">ITBI público</span></div>
+    <div id="rk-box"></div></div>
+</section>
+</div>
+
+<!-- ══════════════ MERCADO ══════════════ -->
+<div id="mkt" class="hide">
+<div class="tabs" data-g="mkt">
+  <span class="on" data-t="m1">Dashboard</span>
+  <span data-t="m2">Evolução de preço</span>
+  <span data-t="m3">Rentabilidade</span>
+  <span data-t="m4">Giro e liquidez</span>
+  <span data-t="m5">Rankings de venda</span>
+</div>
+
+<section id="m1">
+  <div class="grid4" style="margin-bottom:16px" id="mk-kpi"></div>
+  <div class="grid2">
+    <div class="card"><div class="ct"><h3>Transações por mês</h3><span class="src pub">ITBI público</span></div>
+      <div class="wrapc"><canvas id="c-vendas"></canvas></div></div>
+    <div class="card"><div class="ct"><h3>Mediana de R$/m² por segmento</h3><span class="src pub">ITBI público</span></div>
+      <div class="wrapc"><canvas id="c-segmento"></canvas></div></div>
+  </div>
+  <div class="card"><div class="ct"><h3>Bairros mais negociados no mês</h3><span class="src pub">ITBI público</span></div>
+    <table class="tb"><thead><tr><th>Bairro</th><th class="r">Transações</th><th class="r">Mediana R$/m²</th>
+      </tr></thead><tbody id="tb-est"></tbody></table></div>
+  <div class="card"><div class="ct"><h3>Estoque e VGV do empreendimento</h3><span class="src cli">Requer dados do cliente</span></div>
+    <div class="vazio"><b>Estoque não existe no ITBI</b>
+      A base registra apenas transações concluídas com guia paga; unidades disponíveis e VGV
+      em estoque vêm do sistema de vendas da incorporadora.</div></div>
+</section>
+
+<section id="m2" class="hide">
+  <div class="card">
+    <div class="ct"><h3>Evolução do preço mediano</h3><span class="src pub">ITBI público</span></div>
+    <div class="filtros">
+      <select id="m2-dim"><option value="bairro">Por bairro (mais negociados)</option>
+        <option value="segmento">Por segmento</option></select>
+    </div>
+    <div class="wrapc"><canvas id="c-m2"></canvas></div>
+  </div>
+</section>
+
+<section id="m3" class="hide">
+  <div class="card"><div class="ct"><h3>Rentabilidade média por construtora</h3><span class="src cli">Embraesp ou dados do cliente</span></div>
+    <div class="vazio"><b>Construtora não existe no ITBI</b>
+      A Prefeitura omite razão social por sigilo fiscal. Sem a base de lançamentos ou os dados
+      da incorporadora, este ranking não pode ser calculado.</div></div>
+  <div class="card"><div class="ct"><h3>Ágio sobre o valor venal de referência</h3><span class="src pub">ITBI público</span></div>
+    <div class="wrapc"><canvas id="c-agio"></canvas></div>
+    <p class="mut" style="font-size:12.5px;margin-top:12px">Quanto o preço declarado supera a referência
+      da Prefeitura — proxy de aquecimento e de qualidade do ativo no bairro.</p></div>
+</section>
+
+<section id="m4" class="hide">
+  <div class="card"><div class="ct"><h3>Giro por bairro e segmento</h3><span class="src pub">ITBI · liquidez observada</span></div>
+    <div class="filtros"><select id="liq-seg"></select></div>
+    <table class="tb"><thead><tr><th>Bairro · segmento</th><th class="r">Vendas/ano</th><th class="r">Giro (meses)</th>
+      <th style="width:170px">Liquidez</th></tr></thead><tbody id="tb-giro"></tbody></table></div>
+</section>
+
+<section id="m5" class="hide">
+  <div class="grid2">
+    <div class="card"><div class="ct"><h3>Vendas por bairro</h3><span class="src pub">ITBI público</span></div>
+      <div id="rk-vendas"></div></div>
+    <div class="card"><div class="ct"><h3>Maiores vendedores</h3><span class="src cli">Requer CRM do cliente</span></div>
+      <div class="vazio"><b>Corretor, imobiliária e comprador não existem no ITBI</b>
+        A base omite nomes e razões sociais de transmitentes e adquirentes para preservar sigilo fiscal.
+        Este ranking e o indicador de "tempo sem comprar" só existem cruzando com o CRM da operação.</div></div>
+  </div>
+</section>
+</div>
+
+<footer class="foot">
+  <span>GJUREMA · SÃO PAULO</span>
+  <span id="foot-nota">ITBI público · não constitui recomendação</span>
+</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const NAVY="#0D1B2A", GOLD="#A1862E", STEEL="#4A6A8A", TEAL="#2E6B62",
+      CLAY="#B5462F", GREY="#AEB7C1", GOLD2="#C6A339";
+const PALETA=[NAVY,GOLD,STEEL,TEAL,CLAY,GREY];
+const fmt = v => "R$ " + Number(v).toLocaleString("pt-BR",{maximumFractionDigits:0});
+const fm2 = v => Number(v).toLocaleString("pt-BR",{maximumFractionDigits:0});
+const pct = v => (v>=0?"+":"") + Number(v).toFixed(1) + "%";
+let charts = {};
+function draw(id, cfg){ if(charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), cfg); }
+
+async function api(rota, params){
+  const url = new URL("/api"+rota, location.origin);
+  Object.entries(params||{}).forEach(([k,v])=>{ if(v!==undefined && v!==null) url.searchParams.set(k,v); });
+  const resp = await fetch(url);
+  if(!resp.ok) throw new Error((await resp.json().catch(()=>({}))).detail || resp.statusText);
+  return resp.json();
+}
+function erro(alvo, msg){
+  document.getElementById(alvo).innerHTML =
+    `<div class="vazio"><b>Dado indisponível</b>${msg}</div>`;
+}
+
+/* ---------- estado ---------- */
+let META=null, CARTEIRA=[], imovelSel=null, INDICES={}, selIdx=["imovel"], RENT=null;
+const CORES_IDX={imovel:NAVY,cdi:GOLD,ipca:GREY,selic:GOLD2,igpm:TEAL,dolar:CLAY};
+
+/* ---------- navegação ---------- */
+document.querySelectorAll(".switch div").forEach(d=>d.onclick=()=>{
+  document.querySelectorAll(".switch div").forEach(x=>x.classList.remove("on"));
+  d.classList.add("on");
+  const p = d.dataset.p;
+  document.getElementById("inv").classList.toggle("hide", p!=="inv");
+  document.getElementById("mkt").classList.toggle("hide", p!=="mkt");
+  document.getElementById("titulo").textContent =
+    p==="inv" ? "Carteira e precificação" : "Mercado, estoque e performance";
+  render();
+});
+document.querySelectorAll(".tabs").forEach(bar=>{
+  bar.querySelectorAll("span").forEach(s=>s.onclick=()=>{
+    bar.querySelectorAll("span").forEach(x=>x.classList.remove("on"));
+    s.classList.add("on");
+    const grupo = bar.dataset.g==="inv" ? ["i1","i2","i3","i4","i5"] : ["m1","m2","m3","m4","m5"];
+    grupo.forEach(id=>document.getElementById(id).classList.toggle("hide", id!==s.dataset.t));
+    render();
+  });
+});
+
+/* ---------- precificação ---------- */
+function desenhaImovel(){
+  const im = CARTEIRA.find(x=>x.id===imovelSel);
+  if(!im) return;
+  const p = im.precificacao;
+  document.getElementById("h-tit").textContent = `${im.nome} · ${im.unidade} · ${im.bairro}`;
+  document.getElementById("h-num").innerHTML = `R$ ${fm2(p.preco_justo_m2)}<small>/m² total · preço justo</small>`;
+
+  const acima = p.delta_pct >= 0;
+  const v = document.getElementById("h-ver");
+  v.className = "ver ok";
+  v.style.cssText = acima ? "" :
+    "background:rgba(229,115,79,.14);color:#E8A188;border:1px solid rgba(229,115,79,.35)";
+  v.textContent = acima
+    ? `▲ Modelo ${pct(p.delta_pct)} acima do valor pago`
+    : `▼ Modelo ${pct(p.delta_pct)} abaixo do valor pago`;
+
+  const lo = p.valor_justo_p10, hi = p.valor_justo_p90;
+  const pos = Math.max(2, Math.min(98, (im.preco - lo)/(hi - lo)*100));
+  document.getElementById("h-fill").style.cssText = "left:0;right:0";
+  document.getElementById("h-pin").style.left = pos + "%";
+  document.getElementById("h-lo").textContent = fmt(lo);
+  document.getElementById("h-hi").textContent = fmt(hi);
+
+  const compra = new Date(im.dataCompra).toLocaleDateString("pt-BR");
+  document.getElementById("h-stats").innerHTML = `
+    <div><span>Valor pago (${compra})</span><b class="tnum">${fmt(im.preco)}</b></div>
+    <div><span>Valor justo (${p.referencia})</span><b class="tnum">${fmt(p.valor_justo)}</b></div>
+    <div><span>Variação nominal</span><b class="tnum" style="color:${acima?"#7BE3B3":"#E8A188"}">${pct(p.delta_pct)}</b></div>
+    <div><span>R$/m² privativo pago</span><b class="tnum">${fmt(p.preco_m2_pago_privativo)}</b></div>
+    <div><span>Mediana do bairro (ITBI)</span><b class="tnum">${p.mediana_bairro_m2?fmt(p.mediana_bairro_m2)+"/m²":"—"}</b></div>
+    <div><span>Erro médio do modelo</span><b class="tnum">${p.mape_pct.toFixed(1)}%</b></div>`;
+
+  document.getElementById("h-kpi").innerHTML = `
+    <div class="kpi"><div class="eyebrow">Área privativa</div><div class="n tnum">${im.priv} m²</div>
+      <div class="s mut">total ${im.total} m²</div></div>
+    <div class="kpi"><div class="eyebrow">Comparáveis no bairro</div><div class="n tnum">${p.transacoes_bairro.toLocaleString("pt-BR")}</div>
+      <div class="s mut">transações de ITBI usadas</div></div>
+    <div class="kpi"><div class="eyebrow">Corretagem paga</div><div class="n tnum">${fmt(im.corretagem)}</div>
+      <div class="s mut">${(im.corretagem/im.preco*100).toFixed(1)}% do valor</div></div>
+    <div class="kpi"><div class="eyebrow">Matrícula</div><div class="n" style="font-size:19px">${im.matricula}</div>
+      <div class="s mut">fração ${im.fracao}</div></div>`;
+
+  document.getElementById("h-fluxo").innerHTML = im.fluxo.map(f=>
+    `<tr><td class="nm">${f[0]}</td><td class="r tnum">${fmt(f[1])}</td>
+     <td class="r tnum">${(f[1]/im.preco*100).toFixed(1)}%</td></tr>`).join("");
+}
+
+/* ---------- evolução ---------- */
+async function desenhaEvol(){
+  const dados = await api("/serie", {carteira_id: imovelSel});
+  const nivel = document.getElementById("ev-nivel").value;
+  const comparar = document.getElementById("ev-comp").selectedIndex===0;
+  const im = CARTEIRA.find(x=>x.id===imovelSel);
+  const fontes = {
+    predio:{nome:im?im.nome:"Prédio", cor:NAVY, serie:dados.predio_serie},
+    bairro:{nome:dados.bairro||"Bairro", cor:GOLD, serie:dados.bairro_serie},
+    cidade:{nome:"São Paulo", cor:STEEL, serie:dados.cidade},
+  };
+  const keys = (comparar ? ["predio","bairro","cidade"] : [nivel]).filter(k=>fontes[k].serie.length);
+  const anos = [...new Set(keys.flatMap(k=>fontes[k].serie.map(p=>p.ano)))].sort();
+  draw("c-evol",{type:"line",data:{labels:anos,datasets:keys.map(k=>({
+    label:fontes[k].nome,
+    data:anos.map(a=>{const p=fontes[k].serie.find(x=>x.ano===a); return p?p.preco_m2:null;}),
+    borderColor:fontes[k].cor,backgroundColor:fontes[k].cor,
+    borderWidth:k===nivel?3:2,tension:.3,pointRadius:2.5,spanGaps:true}))},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,padding:16}}},
+      scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
+  document.getElementById("ev-nota").textContent = dados.predio_serie.length
+    ? `Série do prédio reconstruída a partir de ${dados.predio_serie.reduce((a,b)=>a+b.transacoes,0)} guias de ITBI no mesmo endereço.`
+    : "Sem histórico suficiente de ITBI neste endereço: o gráfico usa bairro e cidade.";
+}
+
+/* ---------- rentabilidade ---------- */
+function pillsRent(){
+  const box = document.getElementById("idx"); box.innerHTML="";
+  Object.entries(INDICES).forEach(([k,v])=>{
+    const el = document.createElement("div");
+    el.className = "pill" + (selIdx.includes(k)?" on":"");
+    el.innerHTML = `<i style="background:${v.cor}"></i>${v.nome}`;
+    el.onclick = ()=>{
+      if(k==="imovel") return;                      // referência sempre visível
+      selIdx = selIdx.includes(k) ? selIdx.filter(x=>x!==k) : [...selIdx,k];
+      el.classList.toggle("on");
+      plotRent();
+    };
+    box.appendChild(el);
+  });
+}
+function plotRent(){
+  const anos = [...new Set(Object.values(INDICES).flatMap(v=>v.serie.map(p=>p.ano)))].sort();
+  draw("c-rent",{type:"line",data:{labels:anos,datasets:selIdx.filter(k=>INDICES[k]).map(k=>({
+    label:INDICES[k].nome,
+    data:anos.map(a=>{const p=INDICES[k].serie.find(x=>x.ano===a); return p?p.acumulado_pct:null;}),
+    borderColor:INDICES[k].cor,backgroundColor:INDICES[k].cor,
+    borderWidth:k==="imovel"?3:2,tension:.3,pointRadius:2.5,spanGaps:true}))},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,padding:16}}},
+      scales:{y:{ticks:{callback:v=>v.toFixed(0)+"%"}}}}});
+
+  const fim = s => s.length ? s.at(-1).acumulado_pct : null;
+  const ref = fim(INDICES.imovel ? INDICES.imovel.serie : []);
+  const kb = document.getElementById("kpi-rent"); kb.innerHTML="";
+  selIdx.filter(k=>INDICES[k]).forEach(k=>{
+    const val = fim(INDICES[k].serie);
+    if(val===null) return;
+    const d = ref===null ? null : val - ref;
+    const nota = k==="imovel" || d===null
+      ? `acumulado desde ${RENT.ano_base}`
+      : (d<0 ? `o imóvel rendeu +${Math.abs(d).toFixed(1)} p.p.` : `rendeu ${d.toFixed(1)} p.p. acima`);
+    kb.innerHTML += `<div class="kpi"><div class="eyebrow">${INDICES[k].nome}</div>
+      <div class="n tnum">${pct(val)}</div>
+      <div class="s ${k==="imovel"?"mut":(d<0?"pos":"neg")}">${nota}</div></div>`;
+  });
+}
+async function desenhaRent(){
+  RENT = await api("/rentabilidade", {carteira_id: imovelSel});
+  const im = CARTEIRA.find(x=>x.id===imovelSel);
+  INDICES = {imovel:{nome:im?im.nome:"Imóvel", cor:NAVY, serie:RENT.serie}};
+  RENT.indices.forEach(p=>{
+    const slot = INDICES[p.indice] || (INDICES[p.indice] = {nome:p.nome, cor:CORES_IDX[p.indice]||GREY, serie:[]});
+    slot.serie.push({ano:p.ano, acumulado_pct:p.acumulado_pct});
+  });
+  selIdx = selIdx.filter(k=>INDICES[k]);
+  if(selIdx.length<=1) selIdx = ["imovel","cdi","ipca"].filter(k=>INDICES[k]);
+  document.getElementById("rent-nota").textContent =
+    `${RENT.fonte} · base ${RENT.ano_base}. Selecione os índices para comparar.`;
+  pillsRent();
+  plotRent();
+}
+
+/* ---------- composição ---------- */
+async function desenhaComp(){
+  const dim = document.getElementById("comp-dim").value;
+  const {itens} = await api("/composicao", {dim});
+  const total = itens.reduce((a,b)=>a+b.valor,0);
+  draw("c-comp",{type:"doughnut",data:{labels:itens.map(i=>i.rotulo),
+    datasets:[{data:itens.map(i=>i.valor),backgroundColor:PALETA,borderWidth:2,borderColor:"#fff"}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:"62%",
+      plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,padding:14}}}}});
+  document.getElementById("tb-comp").innerHTML = itens.map(i=>
+    `<tr><td class="nm">${i.rotulo}</td><td class="r tnum">${i.ativos}</td>
+     <td class="r tnum">${fmt(i.valor)}</td>
+     <td class="r tnum">${(i.valor/total*100).toFixed(1)}%</td></tr>`).join("");
+}
+
+/* ---------- rankings ---------- */
+function listaRank(dados, sufixo="%"){
+  const max = Math.max(...dados.map(d=>Math.abs(d[1]))) || 1;
+  return `<table class="tb"><tbody>` + dados.map((d,i)=>{
+    const neg = d[1] < 0;
+    return `<tr><td class="nm"><span class="rk ${i<3?"top":""}">${i+1}</span>${d[0]}</td>
+      <td style="width:200px"><div class="bar-in"><i style="width:${Math.abs(d[1])/max*100}%;
+        background:${neg?CLAY:GOLD}"></i></div></td>
+      <td class="r tnum" style="font-weight:700;color:${neg?CLAY:"var(--pos)"}">${d[1].toLocaleString("pt-BR",{maximumFractionDigits:1})}${sufixo}</td></tr>`;
+  }).join("") + `</tbody></table>`;
+}
+
+async function desenhaRank(){
+  const dim = document.getElementById("rk-dim").value;
+  const src = document.getElementById("rk-src");
+  const box = document.getElementById("rk-box");
+  const titulos = {bairro:"Valorização do R$/m² por bairro", imovel:"Valorização por imóvel da carteira",
+    quartos:"Valorização por tipologia da carteira", construtora:"Valorização por construtora"};
+  document.getElementById("rk-tit").textContent = titulos[dim];
+
+  if(dim==="construtora"){
+    src.className="src cli"; src.textContent="Requer dados do cliente";
+    box.innerHTML = `<div class="vazio"><b>Construtora não existe no ITBI</b>
+      Exige a base de lançamentos ou os dados da própria incorporadora.</div>`;
+    return;
+  }
+  if(dim==="bairro"){
+    src.className="src pub"; src.textContent="ITBI público";
+    const {itens} = await api("/ranking/valorizacao", {limit:12});
+    box.innerHTML = itens.length
+      ? listaRank(itens.map(i=>[`${i.bairro} · ${i.ano_inicial}–${i.ano_final}`, i.valorizacao_pct]))
+      : `<div class="vazio"><b>Sem série longa o bastante</b>Ingerir mais anos de ITBI.</div>`;
+    return;
+  }
+  src.className="src cli"; src.textContent="Dados do cliente + ITBI";
+  const chave = dim==="imovel" ? (im=>`${im.nome} · ${im.unidade}`) : (im=>im.quartos);
+  const agreg = {};
+  CARTEIRA.forEach(im=>{ const k = chave(im);
+    (agreg[k] = agreg[k] || []).push(im.precificacao.delta_pct); });
+  box.innerHTML = listaRank(Object.entries(agreg)
+    .map(([k,v])=>[k, v.reduce((a,b)=>a+b,0)/v.length])
+    .sort((a,b)=>b[1]-a[1]));
+}
+
+/* ---------- mercado ---------- */
+async function desenhaMercado(){
+  const m = await api("/mercado");
+  const mes = new Date(m.mes+"T00:00:00").toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  document.getElementById("mk-kpi").innerHTML = `
+    <div class="kpi"><div class="eyebrow">Transações no mês</div>
+      <div class="n tnum">${m.transacoes_mes.toLocaleString("pt-BR")}</div>
+      <div class="s ${m.variacao_mes_pct>=0?"pos":"neg"}">${m.variacao_mes_pct===null?mes:pct(m.variacao_mes_pct)+" vs. mês anterior"}</div></div>
+    <div class="kpi"><div class="eyebrow">Mediana R$/m²</div><div class="n tnum">${fmt(m.preco_m2_mediano)}</div>
+      <div class="s mut">${mes}</div></div>
+    <div class="kpi"><div class="eyebrow">Ticket mediano</div><div class="n tnum">${fmt(m.ticket_mediano)}</div>
+      <div class="s mut">valor declarado na guia</div></div>
+    <div class="kpi"><div class="eyebrow">Ágio sobre o venal</div><div class="n tnum">${pct(m.agio_venal_mediano_pct)}</div>
+      <div class="s mut">${m.financiado_pct.toFixed(0)}% das compras financiadas</div></div>`;
+
+  draw("c-vendas",{type:"bar",data:{labels:m.serie_mensal.map(p=>p.ano_mes.slice(0,7)),
+    datasets:[{label:"Transações",data:m.serie_mensal.map(p=>p.transacoes),backgroundColor:GOLD,borderRadius:6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
+  draw("c-segmento",{type:"bar",data:{labels:m.por_segmento.map(p=>p.segmento),
+    datasets:[{label:"R$/m²",data:m.por_segmento.map(p=>p.preco_m2),backgroundColor:NAVY,borderRadius:6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
+
+  const vendas = await api("/ranking/vendas", {limit:10});
+  document.getElementById("tb-est").innerHTML = vendas.itens.map(e=>
+    `<tr><td class="nm">${e.bairro}</td><td class="r tnum">${e.transacoes.toLocaleString("pt-BR")}</td>
+     <td class="r tnum">${fmt(e.preco_m2)}</td></tr>`).join("");
+  document.getElementById("rk-vendas").innerHTML =
+    listaRank(vendas.itens.map(e=>[e.bairro, e.transacoes]), "");
+}
+
+async function desenhaEvolMercado(){
+  const dim = document.getElementById("m2-dim").value;
+  let conjuntos = [];
+  if(dim==="segmento"){
+    const {itens} = await api("/mercado").then(m=>({itens:m.por_segmento}));
+    conjuntos = await Promise.all(itens.slice(0,4).map(async (s,i)=>{
+      const d = await api("/serie", {segmento:s.segmento});
+      return {nome:s.segmento, cor:PALETA[i], serie:d.cidade};
+    }));
+  } else {
+    const {itens} = await api("/ranking/vendas", {limit:3});
+    conjuntos = await Promise.all(itens.map(async (b,i)=>{
+      const d = await api("/serie", {bairro:b.bairro});
+      return {nome:b.bairro, cor:PALETA[i], serie:d.bairro_serie};
+    }));
+  }
+  const anos = [...new Set(conjuntos.flatMap(c=>c.serie.map(p=>p.ano)))].sort();
+  draw("c-m2",{type:"line",data:{labels:anos,datasets:conjuntos.map(c=>({label:c.nome,
+    data:anos.map(a=>{const p=c.serie.find(x=>x.ano===a); return p?p.preco_m2:null;}),
+    borderColor:c.cor,backgroundColor:c.cor,borderWidth:2.5,tension:.3,pointRadius:2.5,spanGaps:true}))},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,padding:16}}},
+      scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
+}
+
+async function desenhaLiquidez(){
+  const seg = document.getElementById("liq-seg").value;
+  const {itens} = await api("/liquidez", {limit:15, segmento: seg || undefined});
+  document.getElementById("tb-giro").innerHTML = itens.map(g=>{
+    const w = Math.min(g.transacoes_ano/Math.max(...itens.map(x=>x.transacoes_ano))*100,100);
+    const cor = g.giro_meses<0.5 ? TEAL : g.giro_meses<2 ? GOLD : CLAY;
+    return `<tr><td class="nm">${g.bairro} · ${g.segmento}</td>
+      <td class="r tnum">${g.transacoes_ano.toLocaleString("pt-BR",{maximumFractionDigits:1})}</td>
+      <td class="r tnum">${g.giro_meses.toLocaleString("pt-BR",{maximumFractionDigits:2})}</td>
+      <td><div class="bar-in"><i style="width:${w}%;background:${cor}"></i></div></td></tr>`;
+  }).join("");
+}
+
+async function desenhaAgio(){
+  const {itens} = await api("/liquidez", {limit:10});
+  const bairros = [...new Set(itens.map(i=>i.bairro))].slice(0,8);
+  const series = await Promise.all(bairros.map(b=>api("/precificacao",
+    {bairro:b, area_total:70, segmento:"Apartamento"}).catch(()=>null)));
+  const pares = bairros.map((b,i)=>[b, series[i] ? series[i].preco_justo_m2 : null])
+    .filter(p=>p[1]!==null);
+  draw("c-agio",{type:"bar",data:{labels:pares.map(p=>p[0]),
+    datasets:[{label:"Preço justo R$/m² · apto 70 m²",data:pares.map(p=>p[1]),
+      backgroundColor:NAVY,borderRadius:6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
+}
+
+/* ---------- ciclo de render ---------- */
+const VISIVEL = id => !document.getElementById(id).classList.contains("hide");
+async function render(){
+  Chart.defaults.color="#8A9AAB";
+  Chart.defaults.borderColor="rgba(13,27,42,.08)";
+  Chart.defaults.font.family="Manrope, sans-serif";
+  Chart.defaults.font.size=11;
+  const tarefas = [
+    ["i1", async()=>desenhaImovel()], ["i2", desenhaEvol], ["i3", desenhaRent],
+    ["i4", desenhaComp], ["i5", desenhaRank], ["m1", desenhaMercado],
+    ["m2", desenhaEvolMercado], ["m3", desenhaAgio], ["m4", desenhaLiquidez],
+  ];
+  const painel = VISIVEL("inv") ? "i" : "m";
+  for(const [id, fn] of tarefas){
+    if(!id.startsWith(painel) || !VISIVEL(id)) continue;
+    try{ await fn(); }catch(e){ console.error(id, e); }
+  }
+}
+
+["ev-nivel","ev-comp"].forEach(i=>document.getElementById(i).onchange=()=>desenhaEvol());
+document.getElementById("comp-dim").onchange=()=>desenhaComp();
+document.getElementById("rk-dim").onchange=()=>desenhaRank();
+document.getElementById("m2-dim").onchange=()=>desenhaEvolMercado();
+document.getElementById("liq-seg").onchange=()=>desenhaLiquidez();
+document.getElementById("sel-imovel").onchange = e=>{ imovelSel = e.target.value; render(); };
+
+async function boot(){
+  try{
+    META = await api("/meta");
+  }catch(e){
+    document.getElementById("chip-base").textContent = "ITBI INDISPONÍVEL";
+    erro("h-stats", e.message);
+    return;
+  }
+  const cob = META.cobertura || {};
+  document.getElementById("chip-base").textContent =
+    cob.fim ? `ITBI ATÉ ${cob.fim.slice(5,7)}/${cob.fim.slice(0,4)}` : "ITBI PÚBLICO";
+  document.getElementById("foot-nota").textContent =
+    `${(cob.transacoes||0).toLocaleString("pt-BR")} guias de ITBI · ${cob.inicio||""}–${cob.fim||""} · não constitui recomendação`;
+
+  const liq = document.getElementById("liq-seg");
+  liq.innerHTML = `<option value="">Todos os segmentos</option>` +
+    (META.segmentos||[]).map(s=>`<option value="${s}">${s}</option>`).join("");
+
+  const resposta = await api("/carteira");
+  CARTEIRA = resposta.itens;
+  imovelSel = CARTEIRA.length ? CARTEIRA[0].id : null;
+  document.getElementById("sel-imovel").innerHTML = CARTEIRA.map(im=>
+    `<option value="${im.id}">${im.nome} · ${im.unidade} · ${im.bairro}</option>`).join("");
+  render();
+}
+boot();
+</script>
+</html>

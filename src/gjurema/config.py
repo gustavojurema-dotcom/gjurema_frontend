@@ -15,6 +15,11 @@ FIPEZAP_URL = "https://downloads.fipe.org.br/indices/fipezap/fipezap-serieshisto
 BCB_SGS_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{code}/dados"
 IBGE_AGREGADOS_URL = "https://servicodados.ibge.gov.br/api/v3/agregados"
 IBGE_LOCALIDADES_URL = "https://servicodados.ibge.gov.br/api/v1/localidades"
+# Página da Secretaria Municipal da Fazenda com as guias de ITBI pagas por ano.
+ITBI_SP_INDEX_URL = "https://prefeitura.sp.gov.br/web/fazenda/w/acesso_a_informacao/31501"
+
+# Carteira do cliente (contratos): dado privado, fora do ITBI.
+CARTEIRA_PATH = Path(os.environ.get("GJUREMA_CARTEIRA", DATA_DIR / "carteira.json"))
 
 HTTP_TIMEOUT = 120
 
