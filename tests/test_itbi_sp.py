@@ -103,7 +103,23 @@ def test_parse_workbook_tolera_colunas_ausentes(tmp_path, guias):
         planilha.to_excel(writer, sheet_name="MAR-2025", index=False)
 
     bruto = itbi_sp.parse_workbook(caminho)
-    assert "valor_financiado" not in bruto.columns
+    # coluna ausente vira nula para o filtro não confundir "não informado" com zero
+    assert bruto["valor_financiado"].isna().all()
+
+    limpo = itbi_sp.clean(bruto)
+    assert len(limpo) == 2
+    assert limpo["financiado"].isna().all()
+
+
+def test_parse_workbook_rejeita_planilha_sem_coluna_obrigatoria(tmp_path, guias):
+    caminho = tmp_path / "itbi_incompleto.xlsx"
+    fonte = {alvo: origem for origem, alvo in itbi_sp.COLUMNS.items()}
+    planilha = guias.drop(columns=["competencia", "area_construida"]).rename(columns=fonte)
+    with pd.ExcelWriter(caminho) as writer:
+        planilha.to_excel(writer, sheet_name="MAR-2025", index=False)
+
+    with pytest.raises(ValueError, match="area_construida"):
+        itbi_sp.parse_workbook(caminho)
 
 
 def test_parse_workbook_sem_aba_mensal(tmp_path):

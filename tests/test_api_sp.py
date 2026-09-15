@@ -165,6 +165,31 @@ def test_rankings_e_liquidez(client):
     assert liquidez["itens"][0]["giro_meses"] > 0
 
 
+def test_ranking_de_vendas_filtra_o_mes(client, market):
+    ultimo = market.transactions["ano_mes"].max()
+    corpo = client.get("/api/ranking/vendas", params={"mes": ultimo.date().isoformat()}).json()
+    do_mes = int((market.transactions["ano_mes"] == ultimo).sum())
+    assert sum(item["transacoes"] for item in corpo["itens"]) == do_mes
+    assert do_mes < len(market.transactions)
+    assert client.get("/api/ranking/vendas", params={"mes": "mes-que-vem"}).status_code == 400
+
+
+def test_agio_devolve_mediana_percentual_por_bairro(client, market):
+    corpo = client.get("/api/agio", params={"minimo_transacoes": 5}).json()
+    itens = corpo["itens"]
+    assert itens and itens == sorted(itens, key=lambda i: -i["agio_pct"])
+    esperado = market.transactions[market.transactions["bairro"] == itens[0]["bairro"]]
+    assert itens[0]["agio_pct"] == pytest.approx(esperado["agio_venal"].median() * 100)
+
+
+def test_serie_sem_segmento_usa_mediana_das_transacoes(client, market):
+    corpo = client.get("/api/serie", params={"bairro": "PINHEIROS"}).json()
+    transacoes = market.transactions[market.transactions["bairro"] == "PINHEIROS"]
+    ano = corpo["bairro_serie"][0]["ano"]
+    esperado = transacoes[transacoes["data"].dt.year == ano]["preco_m2"].median()
+    assert corpo["bairro_serie"][0]["preco_m2"] == pytest.approx(esperado)
+
+
 def test_mercado_resume_o_ultimo_mes_fechado(client, market):
     corpo = client.get("/api/mercado").json()
     ultimo = market.transactions["ano_mes"].max()
@@ -177,6 +202,24 @@ def test_mercado_resume_o_ultimo_mes_fechado(client, market):
     assert {p["segmento"] for p in corpo["por_segmento"]} == {"Apartamento", "Sala comercial"}
 
 
+def test_carteira_exige_token_quando_configurado(client, monkeypatch):
+    monkeypatch.setenv(api_app.TOKEN_ENV, "segredo")
+    assert client.get("/api/carteira").status_code == 401
+    assert client.get("/api/rentabilidade", params={"carteira_id": "u702"}).status_code == 401
+    liberado = client.get("/api/carteira", headers={api_app.TOKEN_HEADER: "segredo"})
+    assert liberado.status_code == 200
+    # a base pública continua aberta
+    assert client.get("/api/meta").status_code == 200
+
+
+def test_rate_limit_responde_429(client, monkeypatch):
+    monkeypatch.setattr(api_app, "RATE_LIMIT", 3)
+    api_app._hits.clear()
+    codigos = [client.get("/api/meta").status_code for _ in range(4)]
+    assert codigos == [200, 200, 200, 429]
+    api_app._hits.clear()
+
+
 def test_index_serve_o_painel_html(client):
     resposta = client.get("/")
     assert resposta.status_code == 200
@@ -184,6 +227,14 @@ def test_index_serve_o_painel_html(client):
     # o painel consome a API em vez de carregar dados embutidos
     assert 'api("/meta")' in resposta.text
     assert "const CARTEIRA=[{" not in resposta.text.replace(" ", "")
+
+
+def test_build_incompleto_responde_503(tmp_path, monkeypatch):
+    # geração parcial: só as transações foram publicadas
+    transacoes = tmp_path / "sp_transacoes.parquet"
+    transacoes.write_bytes(b"")
+    monkeypatch.setattr(artifacts, "REQUIRED_PATHS", (transacoes, tmp_path / "sp_metrics.json"))
+    assert artifacts.available() is False
 
 
 def test_endpoints_respondem_503_sem_artefatos(monkeypatch):

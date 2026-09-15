@@ -11,18 +11,60 @@ Execução:
 from __future__ import annotations
 
 import json
+import os
+import time
+from collections import deque
 from pathlib import Path
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse
 
 from gjurema.api import artifacts, pricing
 from gjurema.config import CARTEIRA_PATH
 
 STATIC_DIR = Path(__file__).parent / "static"
 
+# Carteira, contrato e matrícula são dados do cliente: quando a API sai do
+# localhost, `GJUREMA_API_TOKEN` passa a ser exigido nesses endpoints.
+TOKEN_ENV = "GJUREMA_API_TOKEN"
+TOKEN_HEADER = "X-GJurema-Token"
+
+# Precificação roda o modelo a cada chamada: janela simples evita que um
+# cliente monopolize o processo.
+RATE_LIMIT = int(os.getenv("GJUREMA_RATE_LIMIT", "120"))
+RATE_WINDOW_S = 60.0
+
 app = FastAPI(title="GJurema · Inteligência de dados imobiliários", version="0.2.0")
+
+_hits: dict[str, deque[float]] = {}
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+    agora = time.monotonic()
+    origem = request.client.host if request.client else "desconhecido"
+    janela = _hits.setdefault(origem, deque())
+    while janela and agora - janela[0] > RATE_WINDOW_S:
+        janela.popleft()
+    if len(janela) >= RATE_LIMIT:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": f"limite de {RATE_LIMIT} chamadas por minuto atingido"},
+        )
+    janela.append(agora)
+    return await call_next(request)
+
+
+def require_private(
+    x_gjurema_token: str | None = Header(default=None, alias=TOKEN_HEADER),
+) -> None:
+    """Protege os dados do cliente quando um token está configurado."""
+    esperado = os.getenv(TOKEN_ENV, "")
+    if esperado and x_gjurema_token != esperado:
+        raise HTTPException(status_code=401, detail="token da carteira ausente ou inválido")
 
 
 def _data() -> artifacts.MarketData:
@@ -51,6 +93,21 @@ def _records(frame: pd.DataFrame) -> list[dict]:
     return json.loads(frame.to_json(orient="records", date_format="iso"))
 
 
+def _annual(frame: pd.DataFrame) -> pd.DataFrame:
+    """Série anual de R$/m² direto das transações.
+
+    Mediana de medianas não é mediana: quando o recorte não fixa o segmento,
+    o agregado por segmento não pode ser reaproveitado.
+    """
+    if frame.empty:
+        return pd.DataFrame(columns=["ano", "preco_m2", "transacoes"])
+    return (
+        frame.assign(ano=frame["data"].dt.year)
+        .groupby("ano", as_index=False)
+        .agg(preco_m2=("preco_m2", "median"), transacoes=("preco_m2", "size"))
+    )
+
+
 @app.get("/api/meta")
 def meta() -> dict:
     """Cobertura da base, bairros/segmentos disponíveis e qualidade do modelo."""
@@ -65,7 +122,7 @@ def meta() -> dict:
     }
 
 
-@app.get("/api/carteira")
+@app.get("/api/carteira", dependencies=[Depends(require_private)])
 def carteira() -> dict:
     """Carteira do cliente já precificada contra o mercado do ITBI."""
     data = _data()
@@ -112,21 +169,21 @@ def serie(
         segmento = segmento or item.get("segmento")
         predio_id = predio_id or pricing.resolve_predio(data, item.get("endereco", ""))
 
-    cidade = data.city_series
     if segmento:
-        cidade = cidade[cidade["segmento"] == segmento]
-    cidade = cidade.groupby("ano", as_index=False).agg(
-        preco_m2=("preco_m2", "median"), transacoes=("transacoes", "sum")
-    )
+        cidade = data.city_series[data.city_series["segmento"] == segmento]
+        cidade = cidade[["ano", "preco_m2", "transacoes"]]
+    else:
+        cidade = _annual(data.transactions)
 
     bairro_frame = pd.DataFrame()
     if bairro:
-        bairro_frame = data.bairro_series[data.bairro_series["bairro"] == bairro]
         if segmento:
-            bairro_frame = bairro_frame[bairro_frame["segmento"] == segmento]
-        bairro_frame = bairro_frame.groupby("ano", as_index=False).agg(
-            preco_m2=("preco_m2", "median"), transacoes=("transacoes", "sum")
-        )
+            bairro_frame = data.bairro_series[
+                (data.bairro_series["bairro"] == bairro)
+                & (data.bairro_series["segmento"] == segmento)
+            ][["ano", "preco_m2", "transacoes"]]
+        else:
+            bairro_frame = _annual(data.transactions[data.transactions["bairro"] == bairro])
 
     predio_frame = pd.DataFrame()
     if predio_id:
@@ -160,7 +217,7 @@ def indices(desde: int | None = None) -> dict:
     return {"fonte": "BCB/SGS", "series": _records(frame)}
 
 
-@app.get("/api/rentabilidade")
+@app.get("/api/rentabilidade", dependencies=[Depends(require_private)])
 def rentabilidade(carteira_id: str) -> dict:
     """Valorização do imóvel (ITBI) contra os índices, desde a compra."""
     data = _data()
@@ -194,7 +251,7 @@ def rentabilidade(carteira_id: str) -> dict:
     }
 
 
-@app.get("/api/composicao")
+@app.get("/api/composicao", dependencies=[Depends(require_private)])
 def composicao(dim: str = "tipo") -> dict:
     """Composição da carteira do cliente por tipo, bairro, quartos ou construtora."""
     campos = {
@@ -232,10 +289,16 @@ def ranking_valorizacao(limit: int = 12, minimo_transacoes: int = 200) -> dict:
 
 
 @app.get("/api/ranking/vendas")
-def ranking_vendas(limit: int = 12, ano: int | None = None) -> dict:
-    """Bairros por volume de transações registradas."""
+def ranking_vendas(limit: int = 12, ano: int | None = None, mes: str | None = None) -> dict:
+    """Bairros por volume de transações registradas, no período pedido."""
     data = _data()
     frame = data.transactions
+    if mes:
+        try:
+            competencia = pd.Timestamp(mes).to_period("M").to_timestamp()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"mês inválido: {mes}") from exc
+        frame = frame[frame["ano_mes"] == competencia]
     if ano:
         frame = frame[frame["data"].dt.year == ano]
     contagem = (
@@ -244,7 +307,25 @@ def ranking_vendas(limit: int = 12, ano: int | None = None) -> dict:
         .sort_values("transacoes", ascending=False)
         .head(limit)
     )
-    return {"fonte": "ITBI público", "ano": ano, "itens": _records(contagem)}
+    return {"fonte": "ITBI público", "ano": ano, "mes": mes, "itens": _records(contagem)}
+
+
+@app.get("/api/agio")
+def agio(limit: int = 10, ano: int | None = None, minimo_transacoes: int = 30) -> dict:
+    """Ágio mediano sobre o valor venal de referência, por bairro."""
+    data = _data()
+    frame = data.transactions.dropna(subset=["agio_venal"])
+    if ano:
+        frame = frame[frame["data"].dt.year == ano]
+    agregado = (
+        frame.groupby("bairro", as_index=False)
+        .agg(agio_pct=("agio_venal", "median"), transacoes=("agio_venal", "size"))
+        .query("transacoes >= @minimo_transacoes")
+        .sort_values("agio_pct", ascending=False)
+        .head(limit)
+    )
+    agregado["agio_pct"] = agregado["agio_pct"] * 100
+    return {"fonte": "ITBI público", "ano": ano, "itens": _records(agregado)}
 
 
 @app.get("/api/liquidez")

@@ -37,14 +37,15 @@ def load_cache(path: Path = CACHE_PATH) -> dict[str, str]:
     return json.loads(path.read_text())
 
 
-def _fetch(cep: str) -> tuple[str, str]:
+def _fetch(cep: str) -> tuple[str, str | None]:
+    """Bairro do CEP, `""` para resposta negativa definitiva e `None` para falha de rede."""
     try:
         response = requests.get(VIACEP_URL.format(cep=cep), timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         payload = response.json()
     except Exception as exc:  # pragma: no cover - rede
         logger.debug("CEP %s indisponível: %s", cep, exc)
-        return cep, ""
+        return cep, None
     if payload.get("erro") or payload.get("localidade") != "São Paulo":
         return cep, ""
     return cep, _normalize(payload.get("bairro") or "")
@@ -58,9 +59,17 @@ def resolve(ceps: list[str], path: Path = CACHE_PATH) -> dict[str, str]:
         return cache
 
     logger.info("Resolvendo %s CEPs no ViaCEP", len(pending))
+    falhas = 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         for cep, bairro in pool.map(_fetch, pending):
+            # Falha de rede fica fora do cache para a próxima execução tentar de novo;
+            # cachear o erro excluiria o CEP da base para sempre.
+            if bairro is None:
+                falhas += 1
+                continue
             cache[cep] = bairro
+    if falhas:
+        logger.warning("%s CEPs não resolvidos por falha de rede — serão reconsultados", falhas)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     artifacts_io.write_json(cache, path)

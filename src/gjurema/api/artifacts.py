@@ -61,6 +61,19 @@ class MarketData:
         return float(frame.sort_values("ano").iloc[-1]["preco_m2"])
 
 
+# O metadado do modelo é gravado por último: ele marca a geração completa.
+REQUIRED_PATHS = (
+    pipeline_sp.TRANSACTIONS_PATH,
+    pipeline_sp.SERIES_CITY_PATH,
+    pipeline_sp.SERIES_BAIRRO_PATH,
+    pipeline_sp.SERIES_PREDIO_PATH,
+    pipeline_sp.LIQUIDITY_PATH,
+    pipeline_sp.APPRECIATION_PATH,
+    pipeline_sp.BUILDINGS_PATH,
+    pipeline_sp.METRICS_PATH,
+    ARTIFACTS_DIR / price_sp.META_FILE,
+)
+
 PATHS = (
     pipeline_sp.TRANSACTIONS_PATH,
     pipeline_sp.SERIES_CITY_PATH,
@@ -75,6 +88,7 @@ PATHS = (
 )
 
 _cache: tuple[tuple[float, ...], MarketData] | None = None
+RELOAD_ATTEMPTS = 3
 
 
 def _read(path: Path) -> pd.DataFrame:
@@ -105,11 +119,19 @@ def _load() -> MarketData:
 def market_data() -> MarketData:
     """Artefatos em cache, recarregados quando o pipeline os republica."""
     global _cache
-    version = _version(*PATHS)
-    if _cache is None or _cache[0] != version:
-        _cache = (version, _load())
-    return _cache[1]
+    for _ in range(RELOAD_ATTEMPTS):
+        version = _version(*PATHS)
+        if _cache is not None and _cache[0] == version:
+            return _cache[1]
+        data = _load()
+        # O pipeline pode ter republicado um arquivo durante a leitura: só
+        # guardamos o snapshot se nada mudou do início ao fim da carga.
+        if _version(*PATHS) == version:
+            _cache = (version, data)
+            return data
+    return data
 
 
 def available() -> bool:
-    return pipeline_sp.TRANSACTIONS_PATH.exists()
+    """Só há painel quando a geração está completa — build parcial responde 503."""
+    return all(path.exists() for path in REQUIRED_PATHS)

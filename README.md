@@ -108,6 +108,11 @@ A carteira do cliente fica fora da base pública, em `data/carteira.json`
 (caminho configurável por `GJUREMA_CARTEIRA`). O painel marca cada bloco com a
 origem do dado — ITBI público ou contrato do cliente.
 
+Fora do localhost, defina `GJUREMA_API_TOKEN`: os endpoints de carteira,
+rentabilidade e composição passam a exigir o cabeçalho `X-GJurema-Token` (o
+painel pede o token e o guarda no navegador). As chamadas de `/api/` são
+limitadas a `GJUREMA_RATE_LIMIT` (120 por minuto, por IP).
+
 ### O que o ITBI não tem
 
 Construtora, corretor, imobiliária, comprador, vendedor, dormitórios, vagas,

@@ -366,6 +366,9 @@ const PALETA=[NAVY,GOLD,STEEL,TEAL,CLAY,GREY];
 const fmt = v => "R$ " + Number(v).toLocaleString("pt-BR",{maximumFractionDigits:0});
 const fm2 = v => Number(v).toLocaleString("pt-BR",{maximumFractionDigits:0});
 const pct = v => (v>=0?"+":"") + Number(v).toFixed(1) + "%";
+/* texto de contrato e de endereço entra em innerHTML: escapar antes de interpolar */
+const esc = v => String(v==null?"":v).replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 let charts = {};
 function draw(id, cfg){ if(charts[id]) charts[id].destroy();
   charts[id] = new Chart(document.getElementById(id), cfg); }
@@ -373,13 +376,22 @@ function draw(id, cfg){ if(charts[id]) charts[id].destroy();
 async function api(rota, params){
   const url = new URL("/api"+rota, location.origin);
   Object.entries(params||{}).forEach(([k,v])=>{ if(v!==undefined && v!==null) url.searchParams.set(k,v); });
-  const resp = await fetch(url);
+  const token = localStorage.getItem("gjurema_token");
+  let resp = await fetch(url, token ? {headers:{"X-GJurema-Token":token}} : undefined);
+  if(resp.status===401){
+    /* dados do cliente: a API só libera com o token configurado no servidor */
+    const novo = prompt("Token de acesso aos dados da carteira:");
+    if(novo){
+      localStorage.setItem("gjurema_token", novo);
+      resp = await fetch(url, {headers:{"X-GJurema-Token":novo}});
+    }
+  }
   if(!resp.ok) throw new Error((await resp.json().catch(()=>({}))).detail || resp.statusText);
   return resp.json();
 }
 function erro(alvo, msg){
   document.getElementById(alvo).innerHTML =
-    `<div class="vazio"><b>Dado indisponível</b>${msg}</div>`;
+    `<div class="vazio"><b>Dado indisponível</b>${esc(msg)}</div>`;
 }
 
 /* ---------- estado ---------- */
@@ -434,7 +446,7 @@ function desenhaImovel(){
   const compra = new Date(im.dataCompra).toLocaleDateString("pt-BR");
   document.getElementById("h-stats").innerHTML = `
     <div><span>Valor pago (${compra})</span><b class="tnum">${fmt(im.preco)}</b></div>
-    <div><span>Valor justo (${p.referencia})</span><b class="tnum">${fmt(p.valor_justo)}</b></div>
+    <div><span>Valor justo (${esc(p.referencia)})</span><b class="tnum">${fmt(p.valor_justo)}</b></div>
     <div><span>Variação nominal</span><b class="tnum" style="color:${acima?"#7BE3B3":"#E8A188"}">${pct(p.delta_pct)}</b></div>
     <div><span>R$/m² privativo pago</span><b class="tnum">${fmt(p.preco_m2_pago_privativo)}</b></div>
     <div><span>Mediana do bairro (ITBI)</span><b class="tnum">${p.mediana_bairro_m2?fmt(p.mediana_bairro_m2)+"/m²":"—"}</b></div>
@@ -447,11 +459,11 @@ function desenhaImovel(){
       <div class="s mut">transações de ITBI usadas</div></div>
     <div class="kpi"><div class="eyebrow">Corretagem paga</div><div class="n tnum">${fmt(im.corretagem)}</div>
       <div class="s mut">${(im.corretagem/im.preco*100).toFixed(1)}% do valor</div></div>
-    <div class="kpi"><div class="eyebrow">Matrícula</div><div class="n" style="font-size:19px">${im.matricula}</div>
-      <div class="s mut">fração ${im.fracao}</div></div>`;
+    <div class="kpi"><div class="eyebrow">Matrícula</div><div class="n" style="font-size:19px">${esc(im.matricula)}</div>
+      <div class="s mut">fração ${esc(im.fracao)}</div></div>`;
 
   document.getElementById("h-fluxo").innerHTML = im.fluxo.map(f=>
-    `<tr><td class="nm">${f[0]}</td><td class="r tnum">${fmt(f[1])}</td>
+    `<tr><td class="nm">${esc(f[0])}</td><td class="r tnum">${fmt(f[1])}</td>
      <td class="r tnum">${(f[1]/im.preco*100).toFixed(1)}%</td></tr>`).join("");
 }
 
@@ -487,7 +499,7 @@ function pillsRent(){
   Object.entries(INDICES).forEach(([k,v])=>{
     const el = document.createElement("div");
     el.className = "pill" + (selIdx.includes(k)?" on":"");
-    el.innerHTML = `<i style="background:${v.cor}"></i>${v.nome}`;
+    el.innerHTML = `<i style="background:${v.cor}"></i>${esc(v.nome)}`;
     el.onclick = ()=>{
       if(k==="imovel") return;                      // referência sempre visível
       selIdx = selIdx.includes(k) ? selIdx.filter(x=>x!==k) : [...selIdx,k];
@@ -518,7 +530,7 @@ function plotRent(){
     const nota = k==="imovel" || d===null
       ? `acumulado desde ${RENT.ano_base}`
       : (d<0 ? `o imóvel rendeu +${Math.abs(d).toFixed(1)} p.p.` : `rendeu ${d.toFixed(1)} p.p. acima`);
-    kb.innerHTML += `<div class="kpi"><div class="eyebrow">${INDICES[k].nome}</div>
+    kb.innerHTML += `<div class="kpi"><div class="eyebrow">${esc(INDICES[k].nome)}</div>
       <div class="n tnum">${pct(val)}</div>
       <div class="s ${k==="imovel"?"mut":(d<0?"pos":"neg")}">${nota}</div></div>`;
   });
@@ -549,7 +561,7 @@ async function desenhaComp(){
     options:{responsive:true,maintainAspectRatio:false,cutout:"62%",
       plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,padding:14}}}}});
   document.getElementById("tb-comp").innerHTML = itens.map(i=>
-    `<tr><td class="nm">${i.rotulo}</td><td class="r tnum">${i.ativos}</td>
+    `<tr><td class="nm">${esc(i.rotulo)}</td><td class="r tnum">${i.ativos}</td>
      <td class="r tnum">${fmt(i.valor)}</td>
      <td class="r tnum">${(i.valor/total*100).toFixed(1)}%</td></tr>`).join("");
 }
@@ -559,7 +571,7 @@ function listaRank(dados, sufixo="%"){
   const max = Math.max(...dados.map(d=>Math.abs(d[1]))) || 1;
   return `<table class="tb"><tbody>` + dados.map((d,i)=>{
     const neg = d[1] < 0;
-    return `<tr><td class="nm"><span class="rk ${i<3?"top":""}">${i+1}</span>${d[0]}</td>
+    return `<tr><td class="nm"><span class="rk ${i<3?"top":""}">${i+1}</span>${esc(d[0])}</td>
       <td style="width:200px"><div class="bar-in"><i style="width:${Math.abs(d[1])/max*100}%;
         background:${neg?CLAY:GOLD}"></i></div></td>
       <td class="r tnum" style="font-weight:700;color:${neg?CLAY:"var(--pos)"}">${d[1].toLocaleString("pt-BR",{maximumFractionDigits:1})}${sufixo}</td></tr>`;
@@ -621,12 +633,15 @@ async function desenhaMercado(){
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
 
-  const vendas = await api("/ranking/vendas", {limit:10});
-  document.getElementById("tb-est").innerHTML = vendas.itens.map(e=>
-    `<tr><td class="nm">${e.bairro}</td><td class="r tnum">${e.transacoes.toLocaleString("pt-BR")}</td>
+  const [doMes, total] = await Promise.all([
+    api("/ranking/vendas", {limit:10, mes:m.mes}),
+    api("/ranking/vendas", {limit:10}),
+  ]);
+  document.getElementById("tb-est").innerHTML = doMes.itens.map(e=>
+    `<tr><td class="nm">${esc(e.bairro)}</td><td class="r tnum">${e.transacoes.toLocaleString("pt-BR")}</td>
      <td class="r tnum">${fmt(e.preco_m2)}</td></tr>`).join("");
   document.getElementById("rk-vendas").innerHTML =
-    listaRank(vendas.itens.map(e=>[e.bairro, e.transacoes]), "");
+    listaRank(total.itens.map(e=>[e.bairro, e.transacoes]), "");
 }
 
 async function desenhaEvolMercado(){
@@ -660,7 +675,7 @@ async function desenhaLiquidez(){
   document.getElementById("tb-giro").innerHTML = itens.map(g=>{
     const w = Math.min(g.transacoes_ano/Math.max(...itens.map(x=>x.transacoes_ano))*100,100);
     const cor = g.giro_meses<0.5 ? TEAL : g.giro_meses<2 ? GOLD : CLAY;
-    return `<tr><td class="nm">${g.bairro} · ${g.segmento}</td>
+    return `<tr><td class="nm">${esc(g.bairro)} · ${esc(g.segmento)}</td>
       <td class="r tnum">${g.transacoes_ano.toLocaleString("pt-BR",{maximumFractionDigits:1})}</td>
       <td class="r tnum">${g.giro_meses.toLocaleString("pt-BR",{maximumFractionDigits:2})}</td>
       <td><div class="bar-in"><i style="width:${w}%;background:${cor}"></i></div></td></tr>`;
@@ -668,17 +683,12 @@ async function desenhaLiquidez(){
 }
 
 async function desenhaAgio(){
-  const {itens} = await api("/liquidez", {limit:10});
-  const bairros = [...new Set(itens.map(i=>i.bairro))].slice(0,8);
-  const series = await Promise.all(bairros.map(b=>api("/precificacao",
-    {bairro:b, area_total:70, segmento:"Apartamento"}).catch(()=>null)));
-  const pares = bairros.map((b,i)=>[b, series[i] ? series[i].preco_justo_m2 : null])
-    .filter(p=>p[1]!==null);
-  draw("c-agio",{type:"bar",data:{labels:pares.map(p=>p[0]),
-    datasets:[{label:"Preço justo R$/m² · apto 70 m²",data:pares.map(p=>p[1]),
+  const {itens} = await api("/agio", {limit:10});
+  draw("c-agio",{type:"bar",data:{labels:itens.map(i=>i.bairro),
+    datasets:[{label:"Ágio mediano sobre o valor venal",data:itens.map(i=>i.agio_pct),
       backgroundColor:NAVY,borderRadius:6}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
+      scales:{y:{ticks:{callback:v=>v.toFixed(0)+"%"}}}}});
 }
 
 /* ---------- ciclo de render ---------- */
@@ -723,13 +733,13 @@ async function boot(){
 
   const liq = document.getElementById("liq-seg");
   liq.innerHTML = `<option value="">Todos os segmentos</option>` +
-    (META.segmentos||[]).map(s=>`<option value="${s}">${s}</option>`).join("");
+    (META.segmentos||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
 
   const resposta = await api("/carteira");
   CARTEIRA = resposta.itens;
   imovelSel = CARTEIRA.length ? CARTEIRA[0].id : null;
   document.getElementById("sel-imovel").innerHTML = CARTEIRA.map(im=>
-    `<option value="${im.id}">${im.nome} · ${im.unidade} · ${im.bairro}</option>`).join("");
+    `<option value="${esc(im.id)}">${esc(im.nome)} · ${esc(im.unidade)} · ${esc(im.bairro)}</option>`).join("");
   render();
 }
 boot();

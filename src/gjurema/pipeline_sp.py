@@ -38,7 +38,10 @@ def build(anos: list[int] | None = None, force_download: bool = False, skip_cep:
     ensure_dirs()
     transactions = itbi_sp.load_transactions(years=anos, force_download=force_download)
 
-    bairros = {} if skip_cep else cep_source.resolve(transactions["cep"].unique().tolist())
+    ceps = transactions["cep"].unique().tolist()
+    # `skip_cep` roda offline: aproveita o que já foi resolvido antes em vez de
+    # esvaziar a base, porque o bairro é obrigatório nos agregados.
+    bairros = cep_source.load_cache() if skip_cep else cep_source.resolve(ceps)
     transactions["bairro"] = transactions["cep"].map(bairros).replace("", pd.NA)
     faltando = transactions["bairro"].isna().mean()
     logger.info("Bairro resolvido para %.1f%% das transações", (1 - faltando) * 100)
@@ -95,7 +98,11 @@ def main() -> None:
     parser.add_argument("command", choices=["build", "train", "all"])
     parser.add_argument("--anos", nargs="*", type=int, default=None, help="anos a ingerir")
     parser.add_argument("--force-download", action="store_true")
-    parser.add_argument("--skip-cep", action="store_true", help="não consulta o ViaCEP")
+    parser.add_argument(
+        "--skip-cep",
+        action="store_true",
+        help="não consulta o ViaCEP: usa apenas os CEPs já resolvidos em cache",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")

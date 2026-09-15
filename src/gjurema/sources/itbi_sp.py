@@ -46,6 +46,19 @@ COLUMNS = {
     "Padrão (IPTU)": "padrao",
 }
 
+# Sem estas colunas a guia não descreve uma venda: a planilha é inutilizável.
+REQUIRED_COLUMNS = (
+    "sql",
+    "logradouro",
+    "numero",
+    "cep",
+    "natureza",
+    "valor_transacao",
+    "data",
+    "area_construida",
+    "uso",
+)
+
 SHEET_PATTERN = re.compile(r"^(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)-(\d{4})$")
 MONTHS = {
     "JAN": 1, "FEV": 2, "MAR": 3, "ABR": 4, "MAI": 5, "JUN": 6,
@@ -129,12 +142,22 @@ def parse_workbook(path: Path) -> pd.DataFrame:
         raw = workbook.parse(sheet_name=sheet)
         available = {source: target for source, target in COLUMNS.items() if source in raw.columns}
         frame = raw[list(available)].rename(columns=available)
+        faltando = [column for column in REQUIRED_COLUMNS if column not in frame.columns]
+        if faltando:
+            raise ValueError(f"{path.name}/{sheet}: colunas obrigatórias ausentes: {faltando}")
         frame["competencia"] = pd.Timestamp(int(match.group(2)), MONTHS[match.group(1)], 1)
         frames.append(frame)
 
     if not frames:
         raise ValueError(f"Nenhuma aba mensal encontrada em {path}")
-    return pd.concat(frames, ignore_index=True)
+
+    tidy = pd.concat(frames, ignore_index=True)
+    # Planilhas antigas omitem colunas opcionais; ausente vira nulo para o
+    # filtro distinguir "não informado" de zero.
+    for column in COLUMNS.values():
+        if column not in tidy.columns:
+            tidy[column] = pd.NA
+    return tidy
 
 
 def _strip_accents(values: pd.Series) -> pd.Series:
@@ -147,6 +170,9 @@ def _strip_accents(values: pd.Series) -> pd.Series:
 def clean(raw: pd.DataFrame) -> pd.DataFrame:
     """Aplica os filtros de mercado e deriva preço por m², prédio e ágio."""
     frame = raw.copy()
+    for column in COLUMNS.values():
+        if column not in frame.columns:
+            frame[column] = pd.NA
     for column in ("valor_transacao", "valor_venal", "valor_venal_proporcional",
                    "valor_financiado", "area_construida", "proporcao_pct", "padrao"):
         if column in frame:
@@ -161,7 +187,8 @@ def clean(raw: pd.DataFrame) -> pd.DataFrame:
         & frame["segmento"].notna()
         & frame["data"].notna()
         # Transmissão parcial não tem preço comparável ao do imóvel inteiro.
-        & frame["proporcao_pct"].ge(100)
+        # Proporção ausente em planilha antiga: a guia é tratada como imóvel inteiro.
+        & frame["proporcao_pct"].fillna(100).ge(100)
         & frame["area_construida"].ge(MIN_AREA_M2)
         & frame["valor_transacao"].ge(MIN_VALUE)
     ].copy()
@@ -179,7 +206,8 @@ def clean(raw: pd.DataFrame) -> pd.DataFrame:
     # O SQL identifica a unidade; o endereço é o que agrupa unidades do mesmo prédio.
     frame["predio_id"] = frame["logradouro"] + "|" + frame["numero"].astype(str) + "|" + frame["cep"]
 
-    frame["financiado"] = frame["valor_financiado"].fillna(0) > 0
+    financiado = frame["valor_financiado"]
+    frame["financiado"] = financiado.gt(0).astype("boolean").where(financiado.notna())
     venal = frame["valor_venal_proporcional"].where(frame["valor_venal_proporcional"] > 0)
     frame["agio_venal"] = frame["valor_transacao"] / venal - 1
 

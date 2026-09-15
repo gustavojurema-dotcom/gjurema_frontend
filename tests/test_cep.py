@@ -50,6 +50,23 @@ def test_resolve_tolera_cep_inexistente(tmp_path, monkeypatch):
     assert cep_source.resolve(["00000000"], path=cache_path) == {"00000000": ""}
 
 
+def test_resolve_nao_cacheia_falha_de_rede(tmp_path, monkeypatch):
+    cache_path = tmp_path / "ceps.json"
+
+    def instavel(url: str, timeout: int) -> Resposta:
+        raise ConnectionError("timeout")
+
+    monkeypatch.setattr(cep_source.requests, "get", instavel)
+    assert cep_source.resolve(["05421030"], path=cache_path) == {}
+
+    monkeypatch.setattr(
+        cep_source.requests,
+        "get",
+        lambda url, timeout: Resposta({"bairro": "Pinheiros", "localidade": "São Paulo"}),
+    )
+    assert cep_source.resolve(["05421030"], path=cache_path) == {"05421030": "PINHEIROS"}
+
+
 def test_resolve_sem_pendencia_nao_toca_a_rede(tmp_path, monkeypatch):
     cache_path = tmp_path / "ceps.json"
     cache_path.write_text(json.dumps({"05421030": "PINHEIROS"}))
