@@ -24,7 +24,7 @@ FEATURES_PATH = PROCESSED_DIR / "features.parquet"
 MARKET_INDEX_PATH = PROCESSED_DIR / "indice_mercado.parquet"
 FORECAST_PATH = PROCESSED_DIR / "valorizacao_projetada.parquet"
 METRICS_PATH = ARTIFACTS_DIR / "metrics.json"
-MODEL_PATH = ARTIFACTS_DIR / "fair_price.json"
+# O pipeline grava o metadado por último, então ele marca a geração publicada.
 MODEL_META_PATH = ARTIFACTS_DIR / "fair_price_meta.json"
 
 
@@ -99,7 +99,7 @@ if page == "Preço justo e oportunidade":
         st.warning("Sem dados de FipeZAP para essa combinação de cidade e tipologia.")
         st.stop()
 
-    model = load_model(version(MODEL_PATH, MODEL_META_PATH))
+    model = load_model(version(MODEL_META_PATH))
     interval = model.predict_interval(row).iloc[0]
     observed_m2 = float(row["venda_preco_m2"].iloc[0])
 

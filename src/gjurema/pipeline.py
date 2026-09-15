@@ -9,11 +9,11 @@ Uso:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 
 import pandas as pd
 
+from gjurema import artifacts_io
 from gjurema import features as feature_layer
 from gjurema.config import ARTIFACTS_DIR, PROCESSED_DIR, ensure_dirs
 from gjurema.models import forecast, price
@@ -34,7 +34,7 @@ def build(force_download: bool = False, skip_ibge: bool = False) -> pd.DataFrame
 
     panel = fipezap.load_panel(force_download=force_download)
     logger.info("FipeZAP: %s linhas, %s cidades", len(panel), panel["city"].nunique())
-    panel.to_parquet(PANEL_PATH, index=False)
+    artifacts_io.write_parquet(panel, PANEL_PATH)
 
     wide = fipezap.wide_prices(panel)
     macro = bcb.load_macro()
@@ -49,10 +49,10 @@ def build(force_download: bool = False, skip_ibge: bool = False) -> pd.DataFrame
             logger.warning("IBGE indisponível, seguindo sem socioeconômicos: %s", exc)
 
     table = feature_layer.build_feature_table(wide, macro=macro, socio=socio)
-    table.to_parquet(FEATURES_PATH, index=False)
+    artifacts_io.write_parquet(table, FEATURES_PATH)
 
-    feature_layer.city_market_index(table).to_parquet(MARKET_INDEX_PATH, index=False)
-    forecast.project_prices(table).to_parquet(FORECAST_PATH, index=False)
+    artifacts_io.write_parquet(feature_layer.city_market_index(table), MARKET_INDEX_PATH)
+    artifacts_io.write_parquet(forecast.project_prices(table), FORECAST_PATH)
     logger.info("Features gravadas em %s (%s linhas)", FEATURES_PATH, len(table))
     return table
 
@@ -71,7 +71,7 @@ def train(table: pd.DataFrame | None = None) -> price.FairPriceModel:
         "forecast_backtest": forecast.backtest(table),
         "top_features": model.feature_importances().head(10).round(4).to_dict(),
     }
-    METRICS_PATH.write_text(json.dumps(metrics, ensure_ascii=False, indent=2))
+    artifacts_io.write_json(metrics, METRICS_PATH)
     logger.info("Modelo treinado: %s", metrics["fair_price"])
     return model
 

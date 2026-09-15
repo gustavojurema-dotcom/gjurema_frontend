@@ -20,6 +20,8 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, r2_score
 from xgboost import XGBRegressor
 
+from gjurema import artifacts_io
+
 TARGET = "venda_preco_m2"
 CATEGORICAL_FEATURES = ["city", "typology", "uf"]
 NUMERIC_FEATURES = [
@@ -107,8 +109,9 @@ class FairPriceModel:
         return importances.sort_values(ascending=False)
 
     def save(self, directory: Path) -> Path:
+        """Publica modelo e metadados; o metadado vai por último e é a marca da geração."""
         directory.mkdir(parents=True, exist_ok=True)
-        self.model.save_model(directory / "fair_price.json")
+        artifacts_io.write_with(directory / "fair_price.json", lambda temp: self.model.save_model(temp))
         metadata = {
             "features": self.features,
             "categorical_features": self.categorical_features,
@@ -116,8 +119,7 @@ class FairPriceModel:
             "metrics": self.metrics,
             "categories": self.categories,
         }
-        path = directory / "fair_price_meta.json"
-        path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2))
+        artifacts_io.write_json(metadata, directory / "fair_price_meta.json")
         return directory
 
     @classmethod
