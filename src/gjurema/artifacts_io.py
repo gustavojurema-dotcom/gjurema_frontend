@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -16,8 +17,9 @@ import pandas as pd
 
 
 def _temp_path(path: Path) -> Path:
-    # Mantém a extensão: o XGBoost escolhe o formato pelo sufixo do arquivo.
-    return path.with_name(f".{path.stem}.tmp{path.suffix}")
+    # Nome único por escrita (escritores simultâneos não compartilham temporário)
+    # e extensão preservada: o XGBoost escolhe o formato pelo sufixo do arquivo.
+    return path.with_name(f".{path.stem}.{uuid.uuid4().hex}.tmp{path.suffix}")
 
 
 def write_with(path: Path, writer: Callable[[Path], Any]) -> Path:
