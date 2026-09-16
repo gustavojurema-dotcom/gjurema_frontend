@@ -46,6 +46,40 @@ COLUMNS = {
     "Padrão (IPTU)": "padrao",
 }
 
+# A planilha de 2024 é publicada sem linha de cabeçalho: a primeira guia vira
+# o nome das colunas. O layout da guia é estável desde 2017, então a ordem
+# abaixo reconstrói os nomes por posição.
+POSITIONAL_HEADER = (
+    "N° do Cadastro (SQL)",
+    "Nome do Logradouro",
+    "Número",
+    "Complemento",
+    "Bairro",
+    "Referência",
+    "CEP",
+    "Natureza de Transação",
+    "Valor de Transação (declarado pelo contribuinte)",
+    "Data de Transação",
+    "Valor Venal de Referência",
+    "Proporção Transmitida (%)",
+    "Valor Venal de Referência (proporcional)",
+    "Base de Cálculo adotada",
+    "Tipo de Financiamento",
+    "Valor Financiado",
+    "Cartório de Registro",
+    "Matrícula do Imóvel",
+    "Situação do SQL",
+    "Área do Terreno (m2)",
+    "Testada (m)",
+    "Fração Ideal",
+    "Área Construída (m2)",
+    "Uso (IPTU)",
+    "Descrição do uso (IPTU)",
+    "Padrão (IPTU)",
+    "Descrição do padrão (IPTU)",
+    "ACC (IPTU)",
+)
+
 # Sem estas colunas a guia não descreve uma venda: a planilha é inutilizável.
 REQUIRED_COLUMNS = (
     "sql",
@@ -139,7 +173,7 @@ def parse_workbook(path: Path) -> pd.DataFrame:
         match = SHEET_PATTERN.match(sheet.strip().upper())
         if match is None:
             continue
-        raw = workbook.parse(sheet_name=sheet)
+        raw = _read_sheet(workbook, sheet)
         available = {source: target for source, target in COLUMNS.items() if source in raw.columns}
         frame = raw[list(available)].rename(columns=available)
         faltando = [column for column in REQUIRED_COLUMNS if column not in frame.columns]
@@ -158,6 +192,19 @@ def parse_workbook(path: Path) -> pd.DataFrame:
         if column not in tidy.columns:
             tidy[column] = pd.NA
     return tidy
+
+
+def _read_sheet(workbook: pd.ExcelFile, sheet: str) -> pd.DataFrame:
+    raw = workbook.parse(sheet_name=sheet)
+    if any(column in raw.columns for column in COLUMNS):
+        return raw
+    # Coluna final vazia é descartada na leitura, então o layout pode vir
+    # truncado à direita; mais colunas que o layout significa outra planilha.
+    if len(raw.columns) > len(POSITIONAL_HEADER):
+        return raw
+    logger.info("%s: aba sem cabeçalho, colunas reconstruídas por posição", sheet)
+    names = list(POSITIONAL_HEADER[: len(raw.columns)])
+    return workbook.parse(sheet_name=sheet, header=None, names=names)
 
 
 def _strip_accents(values: pd.Series) -> pd.Series:

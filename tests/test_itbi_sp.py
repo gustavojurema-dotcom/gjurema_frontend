@@ -80,6 +80,25 @@ def test_clean_ignora_coluna_bairro_da_guia(guias):
     assert "bairro" not in limpo.columns
 
 
+def test_parse_workbook_reconstroi_cabecalho_por_posicao(tmp_path, guias):
+    # A planilha de 2024 é publicada sem cabeçalho: a primeira guia viraria
+    # nome de coluna e o ano inteiro seria descartado.
+    caminho = tmp_path / "itbi_sem_cabecalho.xlsx"
+    fonte = {alvo: origem for origem, alvo in itbi_sp.COLUMNS.items()}
+    planilha = guias.drop(columns=["competencia"]).rename(columns=fonte)
+    for coluna in itbi_sp.POSITIONAL_HEADER:
+        if coluna not in planilha.columns:
+            planilha[coluna] = pd.NA
+    planilha = planilha[list(itbi_sp.POSITIONAL_HEADER)]
+    with pd.ExcelWriter(caminho) as writer:
+        planilha.to_excel(writer, sheet_name="JAN-2024", index=False, header=False)
+
+    bruto = itbi_sp.parse_workbook(caminho)
+    assert len(bruto) == len(guias)
+    assert bruto["valor_transacao"].iloc[0] == pytest.approx(1_000_000.0)
+    assert bruto["uso"].iloc[0] == "APARTAMENTO EM CONDOMÍNIO (EXIGE FRAÇÃO IDEAL)"
+
+
 def test_parse_workbook_le_somente_abas_mensais(tmp_path, guias):
     caminho = tmp_path / "itbi.xlsx"
     fonte = {alvo: origem for origem, alvo in itbi_sp.COLUMNS.items()}
