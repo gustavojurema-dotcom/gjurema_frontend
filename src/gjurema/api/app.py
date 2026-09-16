@@ -374,3 +374,9 @@ def mercado() -> dict:
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/favicon.svg")
+@app.get("/favicon.ico")
+def favicon() -> FileResponse:
+    return FileResponse(STATIC_DIR / "favicon.svg", media_type="image/svg+xml")

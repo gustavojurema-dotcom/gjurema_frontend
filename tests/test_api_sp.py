@@ -250,3 +250,10 @@ def test_resolve_predio_ignora_tipo_de_logradouro(market):
     assert pricing.resolve_predio(market, "Avenida Pinheiros 0, 100") is not None
     assert pricing.resolve_predio(market, "Rua Inexistente, 999") is None
     assert pricing.resolve_predio(market, "sem número") is None
+
+
+def test_favicon_evita_404_no_carregamento():
+    cliente = TestClient(api_app.app)
+    resposta = cliente.get("/favicon.ico")
+    assert resposta.status_code == 200
+    assert resposta.headers["content-type"].startswith("image/svg+xml")

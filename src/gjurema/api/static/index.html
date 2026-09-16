@@ -3,6 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GJurema · Inteligência de dados imobiliários</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -488,9 +489,12 @@ async function desenhaEvol(){
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,padding:16}}},
       scales:{y:{ticks:{callback:v=>fmt(v)}}}}});
-  document.getElementById("ev-nota").textContent = dados.predio_serie.length
+  const desenhados = keys.map(k=>fontes[k].nome).join(" e ");
+  document.getElementById("ev-nota").textContent = keys.includes("predio")
     ? `Série do prédio reconstruída a partir de ${dados.predio_serie.reduce((a,b)=>a+b.transacoes,0)} guias de ITBI no mesmo endereço.`
-    : "Sem histórico suficiente de ITBI neste endereço: o gráfico usa bairro e cidade.";
+    : desenhados
+      ? `Sem histórico suficiente de ITBI neste endereço: o gráfico usa ${desenhados}.`
+      : "Sem série de ITBI disponível para esta seleção.";
 }
 
 /* ---------- rentabilidade ---------- */
