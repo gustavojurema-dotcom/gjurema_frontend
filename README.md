@@ -74,6 +74,54 @@ Cinco telas:
 Métricas da última execução (validação a partir de 09/2025): R² em log ≈ 0,985 e
 erro percentual médio ≈ 2,7%. O backtest da projeção de 12 meses fica em ≈ 4,8% de MAPE.
 
+## São Paulo — ITBI por transação (painel FastAPI)
+
+O ITBI da Prefeitura de São Paulo é a única fonte pública com **preço efetivamente
+pago por endereço**, o que o FipeZAP não dá. A trilha de SP é independente do
+pipeline nacional:
+
+```bash
+# ingestão + agregados + modelo hedônico (baixa ~250 MB de planilhas na 1ª vez)
+python -m gjurema.pipeline_sp all --anos 2019 2020 2021 2022 2023 2024 2025 2026
+
+# painel
+uvicorn gjurema.api.app:app --port 8000     # http://localhost:8000
+```
+
+| Etapa | Código | Saída |
+| --- | --- | --- |
+| Guias de ITBI (compra e venda, imóvel inteiro, outliers de R$/m² cortados) | `sources/itbi_sp.py` | `data/processed/sp_transacoes.parquet` |
+| Bairro por CEP via ViaCEP, com cache em disco | `sources/cep.py` | `data/raw/ceps.json` |
+| Séries anuais de R$/m² (cidade, bairro, prédio), liquidez, valorização, catálogo de prédios | `features_sp.py` | `data/processed/sp_*.parquet` |
+| Modelo hedônico de log(R$/m²) por transação | `models/price_sp.py` | `artifacts/sp_price.json` |
+| API + painel HTML | `api/` | `http://localhost:8000` |
+
+O bairro **não** vem da guia: o campo é preenchido livremente e recebe "TORRE 1",
+"BLOCO B" e afins, então o recorte geográfico é reconstruído pelo CEP.
+
+O modelo hedônico explica o R$/m² por bairro, prédio, área, padrão do IPTU,
+segmento e tempo. O nível de preço do prédio e do bairro entra como média
+histórica **anterior** à venda, para a transação não explicar a si mesma; a
+validação é temporal (últimos 3 meses) e a faixa p10–p90 vem dos resíduos.
+
+A carteira do cliente fica fora da base pública, em `data/carteira.json`
+(caminho configurável por `GJUREMA_CARTEIRA`). O painel marca cada bloco com a
+origem do dado — ITBI público ou contrato do cliente.
+
+Fora do localhost, defina `GJUREMA_API_TOKEN`: os endpoints de carteira,
+rentabilidade e composição passam a exigir o cabeçalho `X-GJurema-Token` (o
+painel pede o token e o guarda no navegador). As chamadas de `/api/` são
+limitadas a `GJUREMA_RATE_LIMIT` (120 por minuto, por IP).
+
+### O que o ITBI não tem
+
+Construtora, corretor, imobiliária, comprador, vendedor, dormitórios, vagas,
+aluguel e estoque **não existem** na base: a Prefeitura omite nomes e razões
+sociais por sigilo fiscal, e a guia só registra vendas concluídas. As telas que
+dependem disso (rentabilidade por construtora, maiores vendedores, VGV em
+estoque) aparecem no painel declarando a origem que falta, em vez de exibir
+número estimado.
+
 ## Limitações conhecidas (e como a Fase 2 as resolve)
 
 - O FipeZAP agrega por **cidade e tipologia**, não por imóvel: o preço justo é um
