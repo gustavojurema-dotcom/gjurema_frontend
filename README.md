@@ -108,6 +108,20 @@ A carteira do cliente fica fora da base pública, em `data/carteira.json`
 (caminho configurável por `GJUREMA_CARTEIRA`). O painel marca cada bloco com a
 origem do dado — ITBI público ou contrato do cliente.
 
+Imóveis entram na carteira pela aba **Cadastro de imóvel**: o upload de
+contrato, ficha ou matrícula (PDF, `.docx`, imagem com OCR via Tesseract, texto)
+preenche o formulário só com o que foi reconhecido no documento, e o restante é
+digitado. Nada é gravado sem conferência.
+
+Aluguel **não existe no ITBI**: é dado privado da carteira (`aluguelMensal`).
+Quando informado, o painel calcula a rentabilidade sobre o valor atualizado do
+imóvel e compara o rendimento mensal com CDI, IPCA, IGP-M, Selic e dólar
+(`data/processed/sp_indices_mensais.parquet`); sem ele, o painel diz que o dado
+falta em vez de estimar.
+
+Para OCR de imagens, instale o Tesseract no sistema
+(`apt install tesseract-ocr tesseract-ocr-por`).
+
 Fora do localhost, defina `GJUREMA_API_TOKEN`: os endpoints de carteira,
 rentabilidade e composição passam a exigir o cabeçalho `X-GJurema-Token` (o
 painel pede o token e o guarda no navegador). As chamadas de `/api/` são

@@ -124,6 +124,14 @@ h1{font-family:Jost,sans-serif;font-size:clamp(28px,4.2vw,40px);font-weight:400;
 select{background:#fff;border:1px solid var(--line);border-radius:99px;padding:9px 16px;
   font-family:Manrope,sans-serif;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;outline:none}
 select:focus{border-color:var(--gold)}
+input[type=text],input[type=number],input[type=date]{width:100%;background:#fff;border:1px solid var(--line);
+  border-radius:10px;padding:9px 12px;font-family:Manrope,sans-serif;font-size:13.5px;color:var(--ink);outline:none}
+input:focus{border-color:var(--gold)}
+.campo{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.campo label{font-family:Jost,sans-serif;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}
+.campo .ajuda{font-size:11.5px;color:var(--ink-3)}
+.campo.req label::after{content:" *";color:var(--gold)}
+button.pill{font-family:Manrope,sans-serif}
 .pills{display:flex;gap:8px;flex-wrap:wrap}
 .pill{padding:7px 15px;border-radius:99px;border:1px solid var(--line);background:#fff;
   font-size:12.5px;font-weight:700;cursor:pointer;color:var(--ink-2);user-select:none;transition:.14s;
@@ -189,6 +197,7 @@ select:focus{border-color:var(--gold)}
   <span data-t="i3">Rentabilidade vs. mercado</span>
   <span data-t="i4">Composição da carteira</span>
   <span data-t="i5">Ranking de valorização</span>
+  <span data-t="i6">Cadastro de imóvel</span>
 </div>
 
 <!-- precificação -->
@@ -242,7 +251,13 @@ select:focus{border-color:var(--gold)}
 <!-- rentabilidade -->
 <section id="i3" class="hide">
   <div class="card">
-    <div class="ct"><h3>Retorno acumulado · imóvel vs. índices</h3><span class="src pub">ITBI + BCB</span></div>
+    <div class="ct"><h3 id="rent-tit">Retorno acumulado · imóvel vs. índices</h3><span class="src pub">ITBI + BCB</span></div>
+    <div class="filtros">
+      <select id="rent-freq">
+        <option value="anual">Retorno acumulado anual (valorização)</option>
+        <option value="mensal">Rendimento mensal (aluguel vs. índices)</option>
+      </select>
+    </div>
     <p class="mut" style="font-size:13px;margin:-6px 0 14px" id="rent-nota">Selecione os índices para comparar.</p>
     <div class="pills" id="idx"></div>
     <div class="wrapc" style="margin-top:18px"><canvas id="c-rent"></canvas></div>
@@ -282,6 +297,28 @@ select:focus{border-color:var(--gold)}
   </div>
   <div class="card"><div class="ct"><h3 id="rk-tit">Valorização</h3><span class="src pub" id="rk-src">ITBI público</span></div>
     <div id="rk-box"></div></div>
+</section>
+
+<!-- cadastro -->
+<section id="i6" class="hide">
+  <div class="card">
+    <div class="ct"><h3>Importar contrato, ficha ou matrícula</h3><span class="src cli">Documento do cliente</span></div>
+    <p class="mut" style="font-size:13px;margin:-6px 0 14px">PDF, Word (.docx), imagem (PNG/JPG, com OCR) ou texto.
+      Os campos reconhecidos preenchem o formulário abaixo — nada é gravado sem a sua conferência.</p>
+    <input type="file" id="cad-arquivos" multiple
+      accept=".pdf,.docx,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.txt,.csv,.md">
+    <button class="pill on" id="cad-ler" style="margin-left:10px">Ler documentos</button>
+    <div id="cad-leitura" style="margin-top:14px"></div>
+  </div>
+  <div class="card">
+    <div class="ct"><h3 id="cad-tit">Dados do imóvel</h3><span class="src cli">Dados do cliente</span></div>
+    <div id="cad-form" class="grid3"></div>
+    <div style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="pill on" id="cad-salvar">Adicionar à carteira</button>
+      <button class="pill" id="cad-limpar">Limpar formulário</button>
+      <span id="cad-msg" class="mut" style="font-size:13px"></span>
+    </div>
+  </div>
 </section>
 </div>
 
@@ -374,17 +411,24 @@ let charts = {};
 function draw(id, cfg){ if(charts[id]) charts[id].destroy();
   charts[id] = new Chart(document.getElementById(id), cfg); }
 
-async function api(rota, params){
+async function api(rota, params, opcoes){
   const url = new URL("/api"+rota, location.origin);
   Object.entries(params||{}).forEach(([k,v])=>{ if(v!==undefined && v!==null) url.searchParams.set(k,v); });
-  const token = localStorage.getItem("gjurema_token");
-  let resp = await fetch(url, token ? {headers:{"X-GJurema-Token":token}} : undefined);
+  const {metodo, corpo, form} = opcoes || {};
+  const pedido = token => {
+    const cabecalho = token ? {"X-GJurema-Token":token} : {};
+    if(form) return {method:metodo||"POST", headers:cabecalho, body:form};
+    if(corpo!==undefined) return {method:metodo||"POST",
+      headers:{...cabecalho,"Content-Type":"application/json"}, body:JSON.stringify(corpo)};
+    return {method:metodo||"GET", headers:cabecalho};
+  };
+  let resp = await fetch(url, pedido(localStorage.getItem("gjurema_token")));
   if(resp.status===401){
     /* dados do cliente: a API só libera com o token configurado no servidor */
     const novo = prompt("Token de acesso aos dados da carteira:");
     if(novo){
       localStorage.setItem("gjurema_token", novo);
-      resp = await fetch(url, {headers:{"X-GJurema-Token":novo}});
+      resp = await fetch(url, pedido(novo));
     }
   }
   if(!resp.ok) throw new Error((await resp.json().catch(()=>({}))).detail || resp.statusText);
@@ -414,7 +458,7 @@ document.querySelectorAll(".tabs").forEach(bar=>{
   bar.querySelectorAll("span").forEach(s=>s.onclick=()=>{
     bar.querySelectorAll("span").forEach(x=>x.classList.remove("on"));
     s.classList.add("on");
-    const grupo = bar.dataset.g==="inv" ? ["i1","i2","i3","i4","i5"] : ["m1","m2","m3","m4","m5"];
+    const grupo = bar.dataset.g==="inv" ? ["i1","i2","i3","i4","i5","i6"] : ["m1","m2","m3","m4","m5"];
     grupo.forEach(id=>document.getElementById(id).classList.toggle("hide", id!==s.dataset.t));
     render();
   });
@@ -446,22 +490,33 @@ function desenhaImovel(){
 
   const compra = new Date(im.dataCompra).toLocaleDateString("pt-BR");
   document.getElementById("h-stats").innerHTML = `
-    <div><span>Valor pago (${compra})</span><b class="tnum">${fmt(im.preco)}</b></div>
-    <div><span>Valor justo (${esc(p.referencia)})</span><b class="tnum">${fmt(p.valor_justo)}</b></div>
-    <div><span>Variação nominal</span><b class="tnum" style="color:${acima?"#7BE3B3":"#E8A188"}">${pct(p.delta_pct)}</b></div>
+    <div><span>Valor pago imóvel (${compra})</span><b class="tnum">${fmt(im.preco)}</b></div>
+    <div><span>Valor atualizado imóvel (${esc(p.referencia)})</span><b class="tnum">${fmt(p.valor_atualizado)}</b></div>
+    <div><span>Valorização imóvel no período</span><b class="tnum" style="color:${acima?"#7BE3B3":"#E8A188"}">${pct(p.delta_pct)}</b></div>
     <div><span>R$/m² privativo pago</span><b class="tnum">${fmt(p.preco_m2_pago_privativo)}</b></div>
-    <div><span>Mediana do bairro (ITBI)</span><b class="tnum">${p.mediana_bairro_m2?fmt(p.mediana_bairro_m2)+"/m²":"—"}</b></div>
-    <div><span>Erro médio do modelo</span><b class="tnum">${p.mape_pct.toFixed(1)}%</b></div>`;
+    <div><span>m² atualizado do imóvel</span><b class="tnum">${fmt(p.preco_m2_atualizado_privativo)}/m² priv.</b></div>
+    <div><span>Mediana do bairro (ITBI)</span><b class="tnum">${p.mediana_bairro_m2?fmt(p.mediana_bairro_m2)+"/m²":"—"}</b></div>`;
 
+  const aluguel = p.aluguel_mensal;
   document.getElementById("h-kpi").innerHTML = `
     <div class="kpi"><div class="eyebrow">Área privativa</div><div class="n tnum">${im.priv} m²</div>
       <div class="s mut">total ${im.total} m²</div></div>
-    <div class="kpi"><div class="eyebrow">Comparáveis no bairro</div><div class="n tnum">${p.transacoes_bairro.toLocaleString("pt-BR")}</div>
-      <div class="s mut">transações de ITBI usadas</div></div>
-    <div class="kpi"><div class="eyebrow">Corretagem paga</div><div class="n tnum">${fmt(im.corretagem)}</div>
-      <div class="s mut">${(im.corretagem/im.preco*100).toFixed(1)}% do valor</div></div>
-    <div class="kpi"><div class="eyebrow">Matrícula</div><div class="n" style="font-size:19px">${esc(im.matricula)}</div>
+    <div class="kpi"><div class="eyebrow">Valor aluguel atual</div>
+      <div class="n tnum">${aluguel?fmt(aluguel):"—"}</div>
+      <div class="s mut">${aluguel?"informado na carteira · por mês":"não existe no ITBI"}
+        <a href="#" id="edita-aluguel" style="color:var(--gold);text-decoration:none">· editar</a></div></div>
+    <div class="kpi"><div class="eyebrow">Rentabilidade aluguel/valor atual</div>
+      <div class="n tnum">${aluguel?p.yield_mensal_pct.toFixed(2)+"% a.m.":"—"}</div>
+      <div class="s mut">${aluguel?p.yield_anual_pct.toFixed(2)+"% ao ano sobre o valor atualizado":"informe o aluguel para calcular"}</div></div>
+    <div class="kpi"><div class="eyebrow">Matrícula</div><div class="n" style="font-size:19px">${esc(im.matricula||"—")}</div>
       <div class="s mut">fração ${esc(im.fracao)}</div></div>`;
+  document.getElementById("edita-aluguel").onclick = async ev=>{
+    ev.preventDefault();
+    const valor = prompt("Valor do aluguel atual (R$/mês):", aluguel || "");
+    if(valor===null) return;
+    await api(`/carteira/${im.id}`, null, {metodo:"PATCH", corpo:{aluguelMensal: valor}});
+    await recarregaCarteira();
+  };
 
   document.getElementById("h-fluxo").innerHTML = im.fluxo.map(f=>
     `<tr><td class="nm">${esc(f[0])}</td><td class="r tnum">${fmt(f[1])}</td>
@@ -505,7 +560,7 @@ function pillsRent(){
     el.className = "pill" + (selIdx.includes(k)?" on":"");
     el.innerHTML = `<i style="background:${v.cor}"></i>${esc(v.nome)}`;
     el.onclick = ()=>{
-      if(k==="imovel") return;                      // referência sempre visível
+      if(k==="imovel" || k==="aluguel") return;     // referência sempre visível
       selIdx = selIdx.includes(k) ? selIdx.filter(x=>x!==k) : [...selIdx,k];
       el.classList.toggle("on");
       plotRent();
@@ -514,6 +569,7 @@ function pillsRent(){
   });
 }
 function plotRent(){
+  if(document.getElementById("rent-freq").value==="mensal") return desenhaRentMensal();
   const anos = [...new Set(Object.values(INDICES).flatMap(v=>v.serie.map(p=>p.ano)))].sort();
   draw("c-rent",{type:"line",data:{labels:anos,datasets:selIdx.filter(k=>INDICES[k]).map(k=>({
     label:INDICES[k].nome,
@@ -539,7 +595,60 @@ function plotRent(){
       <div class="s ${k==="imovel"?"mut":(d<0?"pos":"neg")}">${nota}</div></div>`;
   });
 }
+/* ---------- rentabilidade mensal (aluguel vs. índices) ---------- */
+async function desenhaRentMensal(){
+  const dados = await api("/rentabilidade/mensal", {carteira_id: imovelSel});
+  const meses = dados.serie.map(p=>p.ano_mes.slice(0,7));
+  INDICES = {};
+  if(dados.aluguel_mensal)
+    INDICES.aluguel = {nome:"Aluguel do imóvel", cor:NAVY,
+      serie:dados.serie.map(p=>({x:p.ano_mes.slice(0,7), v:p.aluguel_pct}))};
+  INDICES.valorizacao = {nome:"Valorização do imóvel (ITBI)", cor:GOLD,
+    serie:dados.serie.map(p=>({x:p.ano_mes.slice(0,7), v:p.valorizacao_pct}))};
+  if(dados.aluguel_mensal)
+    INDICES.total = {nome:"Aluguel + valorização", cor:TEAL,
+      serie:dados.serie.map(p=>({x:p.ano_mes.slice(0,7), v:p.total_pct}))};
+  dados.indices.forEach(p=>{
+    const slot = INDICES[p.indice] || (INDICES[p.indice] =
+      {nome:p.nome, cor:CORES_IDX[p.indice]||GREY, serie:[]});
+    slot.serie.push({x:String(p.ano_mes).slice(0,7), v:p.taxa_pct});
+  });
+
+  selIdx = selIdx.filter(k=>INDICES[k]);
+  if(selIdx.length<=1)
+    selIdx = ["aluguel","valorizacao","cdi","ipca"].filter(k=>INDICES[k]);
+
+  document.getElementById("rent-tit").textContent = "Rendimento mensal · aluguel vs. índices";
+  document.getElementById("rent-nota").textContent = dados.aluguel_mensal
+    ? `${dados.fonte} · aluguel de ${fmt(dados.aluguel_mensal)}/mês sobre o valor do imóvel mês a mês. Taxas mensais, não acumuladas.`
+    : `${dados.fonte} · sem aluguel informado para este imóvel: cadastre o valor na aba Precificação para ver o rendimento locatício.`;
+  pillsRent();
+
+  draw("c-rent",{type:"line",data:{labels:meses,datasets:selIdx.filter(k=>INDICES[k]).map(k=>({
+    label:INDICES[k].nome,
+    data:meses.map(m=>{const p=INDICES[k].serie.find(s=>s.x===m); return p&&p.v!==null?p.v:null;}),
+    borderColor:INDICES[k].cor,backgroundColor:INDICES[k].cor,
+    borderWidth:k==="aluguel"?3:2,tension:.3,pointRadius:2,spanGaps:true}))},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,padding:16}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y.toFixed(2)}% no mês`}}},
+      scales:{y:{ticks:{callback:v=>v.toFixed(2)+"%"}}}}});
+
+  const media = s => { const v = s.map(p=>p.v).filter(x=>x!==null && x!==undefined);
+    return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null; };
+  const kb = document.getElementById("kpi-rent"); kb.innerHTML="";
+  selIdx.filter(k=>INDICES[k]).forEach(k=>{
+    const m = media(INDICES[k].serie);
+    if(m===null) return;
+    kb.innerHTML += `<div class="kpi"><div class="eyebrow">${esc(INDICES[k].nome)}</div>
+      <div class="n tnum">${m.toFixed(2)}%</div>
+      <div class="s mut">média mensal · ${((Math.pow(1+m/100,12)-1)*100).toFixed(1)}% ao ano</div></div>`;
+  });
+}
+
 async function desenhaRent(){
+  if(document.getElementById("rent-freq").value==="mensal") return desenhaRentMensal();
+  document.getElementById("rent-tit").textContent = "Retorno acumulado · imóvel vs. índices";
   RENT = await api("/rentabilidade", {carteira_id: imovelSel});
   const im = CARTEIRA.find(x=>x.id===imovelSel);
   INDICES = {imovel:{nome:im?im.nome:"Imóvel", cor:NAVY, serie:RENT.serie}};
@@ -695,6 +804,50 @@ async function desenhaAgio(){
       scales:{y:{ticks:{callback:v=>v.toFixed(0)+"%"}}}}});
 }
 
+/* ---------- cadastro de imóvel ---------- */
+let CAMPOS=null;
+function entradaHtml(campo){
+  const tipo = {numero:"number", inteiro:"number", data:"date"}[campo.tipo] || "text";
+  const passo = campo.tipo==="numero" ? ` step="any"` : "";
+  const padrao = campo.padrao!==undefined ? esc(campo.padrao) : "";
+  const entrada = campo.tipo==="opcao"
+    ? `<select id="f-${campo.nome}" style="border-radius:10px;width:100%">
+        <option value=""></option>${campo.opcoes.map(o=>
+          `<option${o===campo.padrao?" selected":""}>${esc(o)}</option>`).join("")}</select>`
+    : `<input id="f-${campo.nome}" type="${tipo}"${passo} value="${padrao}">`;
+  return `<div class="campo${campo.obrigatorio?" req":""}"><label for="f-${campo.nome}">${esc(campo.rotulo)}</label>
+    ${entrada}${campo.ajuda?`<span class="ajuda">${esc(campo.ajuda)}</span>`:""}</div>`;
+}
+async function desenhaCadastro(){
+  if(CAMPOS) return;
+  CAMPOS = (await api("/carteira/campos")).campos;
+  document.getElementById("cad-form").innerHTML =
+    CAMPOS.filter(c=>c.tipo!=="fluxo").map(entradaHtml).join("");
+}
+function leFormulario(){
+  const dados = {};
+  CAMPOS.filter(c=>c.tipo!=="fluxo").forEach(c=>{
+    const v = document.getElementById("f-"+c.nome).value;
+    if(v!=="") dados[c.nome] = v;
+  });
+  return dados;
+}
+function preencheFormulario(valores){
+  Object.entries(valores).forEach(([k,v])=>{
+    const el = document.getElementById("f-"+k);
+    if(el && v!==null && v!==undefined) el.value = v;
+  });
+}
+async function recarregaCarteira(){
+  const resposta = await api("/carteira");
+  CARTEIRA = resposta.itens;
+  document.getElementById("sel-imovel").innerHTML = CARTEIRA.map(im=>
+    `<option value="${esc(im.id)}">${esc(im.nome)} · ${esc(im.unidade)} · ${esc(im.bairro)}</option>`).join("");
+  if(!CARTEIRA.some(im=>im.id===imovelSel)) imovelSel = CARTEIRA.length ? CARTEIRA[0].id : null;
+  document.getElementById("sel-imovel").value = imovelSel || "";
+  render();
+}
+
 /* ---------- ciclo de render ---------- */
 const VISIVEL = id => !document.getElementById(id).classList.contains("hide");
 async function render(){
@@ -704,7 +857,7 @@ async function render(){
   Chart.defaults.font.size=11;
   const tarefas = [
     ["i1", async()=>desenhaImovel()], ["i2", desenhaEvol], ["i3", desenhaRent],
-    ["i4", desenhaComp], ["i5", desenhaRank], ["m1", desenhaMercado],
+    ["i4", desenhaComp], ["i5", desenhaRank], ["i6", desenhaCadastro], ["m1", desenhaMercado],
     ["m2", desenhaEvolMercado], ["m3", desenhaAgio], ["m4", desenhaLiquidez],
   ];
   const painel = VISIVEL("inv") ? "i" : "m";
@@ -720,6 +873,41 @@ document.getElementById("rk-dim").onchange=()=>desenhaRank();
 document.getElementById("m2-dim").onchange=()=>desenhaEvolMercado();
 document.getElementById("liq-seg").onchange=()=>desenhaLiquidez();
 document.getElementById("sel-imovel").onchange = e=>{ imovelSel = e.target.value; render(); };
+document.getElementById("rent-freq").onchange = ()=>{ selIdx = []; desenhaRent(); };
+
+document.getElementById("cad-ler").onclick = async ()=>{
+  const entrada = document.getElementById("cad-arquivos");
+  const saida = document.getElementById("cad-leitura");
+  if(!entrada.files.length){ saida.innerHTML = `<span class="mut">Escolha ao menos um arquivo.</span>`; return; }
+  saida.innerHTML = `<span class="mut">Lendo documentos…</span>`;
+  const form = new FormData();
+  [...entrada.files].forEach(f=>form.append("arquivos", f));
+  try{
+    const r = await api("/carteira/extrair", null, {form});
+    preencheFormulario(r.campos);
+    const achados = Object.keys(r.campos).length;
+    saida.innerHTML = `<table class="tb"><thead><tr><th>Arquivo</th><th>Campos reconhecidos</th></tr></thead><tbody>` +
+      r.arquivos.map(a=>`<tr><td class="nm">${esc(a.arquivo)}</td>
+        <td>${a.erro?`<span class="neg">${esc(a.erro)}</span>`:(a.campos.length?esc(a.campos.join(", ")):"nenhum")}</td></tr>`).join("") +
+      `</tbody></table><p class="mut" style="font-size:12.5px;margin-top:10px">${achados} campo(s) preenchido(s) no formulário — confira e complete o que faltar.</p>`;
+  }catch(e){ saida.innerHTML = `<div class="vazio"><b>Não foi possível ler</b>${esc(e.message)}</div>`; }
+};
+document.getElementById("cad-limpar").onclick = ()=>{
+  CAMPOS.filter(c=>c.tipo!=="fluxo").forEach(c=>{
+    document.getElementById("f-"+c.nome).value = c.padrao!==undefined ? c.padrao : "";
+  });
+  document.getElementById("cad-msg").textContent = "";
+};
+document.getElementById("cad-salvar").onclick = async ()=>{
+  const msg = document.getElementById("cad-msg");
+  msg.className = "mut"; msg.textContent = "Salvando…";
+  try{
+    const {item} = await api("/carteira", null, {corpo: leFormulario()});
+    imovelSel = item.id;
+    await recarregaCarteira();
+    msg.className = "pos"; msg.textContent = `${item.nome} adicionado à carteira e já precificado.`;
+  }catch(e){ msg.className = "neg"; msg.textContent = e.message; }
+};
 
 async function boot(){
   try{
@@ -739,12 +927,7 @@ async function boot(){
   liq.innerHTML = `<option value="">Todos os segmentos</option>` +
     (META.segmentos||[]).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
 
-  const resposta = await api("/carteira");
-  CARTEIRA = resposta.itens;
-  imovelSel = CARTEIRA.length ? CARTEIRA[0].id : null;
-  document.getElementById("sel-imovel").innerHTML = CARTEIRA.map(im=>
-    `<option value="${esc(im.id)}">${esc(im.nome)} · ${esc(im.unidade)} · ${esc(im.bairro)}</option>`).join("");
-  render();
+  await recarregaCarteira();
 }
 boot();
 </script>

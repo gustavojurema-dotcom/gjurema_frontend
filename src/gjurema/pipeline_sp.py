@@ -30,6 +30,7 @@ LIQUIDITY_PATH = PROCESSED_DIR / "sp_liquidez.parquet"
 APPRECIATION_PATH = PROCESSED_DIR / "sp_valorizacao.parquet"
 BUILDINGS_PATH = PROCESSED_DIR / "sp_predios.parquet"
 INDICES_PATH = PROCESSED_DIR / "sp_indices.parquet"
+INDICES_MONTHLY_PATH = PROCESSED_DIR / "sp_indices_mensais.parquet"
 METRICS_PATH = ARTIFACTS_DIR / "sp_metrics.json"
 
 
@@ -63,6 +64,9 @@ def build(anos: list[int] | None = None, force_download: bool = False, skip_cep:
     indices = indices_source.annual_accumulated(int(periodo.min()), int(periodo.max()))
     if not indices.empty:
         artifacts_io.write_parquet(indices, INDICES_PATH)
+    mensais = indices_source.monthly_rates(int(periodo.min()), int(periodo.max()))
+    if not mensais.empty:
+        artifacts_io.write_parquet(mensais, INDICES_MONTHLY_PATH)
 
     logger.info("ITBI-SP: %s transações, %s bairros", len(transactions), transactions["bairro"].nunique())
     return transactions

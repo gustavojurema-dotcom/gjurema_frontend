@@ -8,7 +8,7 @@ garante que nunca se leia um arquivo pela metade.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
@@ -36,6 +36,7 @@ class MarketData:
     indices: pd.DataFrame
     metrics: dict
     model: price_sp.HedonicPriceModel | None
+    indices_monthly: pd.DataFrame = field(default_factory=pd.DataFrame)
 
     @property
     def bairros(self) -> list[str]:
@@ -83,6 +84,7 @@ PATHS = (
     pipeline_sp.APPRECIATION_PATH,
     pipeline_sp.BUILDINGS_PATH,
     pipeline_sp.INDICES_PATH,
+    pipeline_sp.INDICES_MONTHLY_PATH,
     pipeline_sp.METRICS_PATH,
     ARTIFACTS_DIR / price_sp.META_FILE,
 )
@@ -111,6 +113,7 @@ def _load() -> MarketData:
         appreciation=_read(pipeline_sp.APPRECIATION_PATH),
         buildings=_read(pipeline_sp.BUILDINGS_PATH),
         indices=_read(pipeline_sp.INDICES_PATH),
+        indices_monthly=_read(pipeline_sp.INDICES_MONTHLY_PATH),
         metrics=metrics,
         model=model,
     )

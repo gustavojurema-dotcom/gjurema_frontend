@@ -32,6 +32,38 @@ def _year_end_factor(monthly: pd.Series) -> pd.Series:
     return factors.groupby(factors.index.year).last()
 
 
+def monthly_rates(start_year: int, end_year: int) -> pd.DataFrame:
+    """Taxa de cada índice por mês (%), comparável ao rendimento do aluguel."""
+    rows: list[dict] = []
+    for name, code in {**RATE_SERIES, **LEVEL_SERIES}.items():
+        try:
+            series = bcb.fetch_series(code, start=f"01/01/{start_year}")
+        except Exception as exc:  # pragma: no cover - rede
+            logger.warning("Índice %s indisponível: %s", name, exc)
+            continue
+        if series.empty:
+            continue
+
+        monthly = series.set_index("date")["value"].resample("MS").mean().dropna()
+        # Nível (dólar) vira taxa pela variação do mês; as demais já são taxas.
+        taxas = monthly.pct_change() * 100 if name in LEVEL_SERIES else monthly
+        for month, value in taxas.dropna().items():
+            if start_year <= month.year <= end_year:
+                rows.append(
+                    {
+                        "indice": name,
+                        "nome": LABELS[name],
+                        "ano_mes": pd.Timestamp(month),
+                        "taxa_pct": float(value),
+                    }
+                )
+
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        return frame
+    return frame.sort_values(["indice", "ano_mes"]).reset_index(drop=True)
+
+
 def annual_accumulated(start_year: int, end_year: int) -> pd.DataFrame:
     """Retorno acumulado por ano (%) com base 0 no ano inicial."""
     rows: list[dict] = []
