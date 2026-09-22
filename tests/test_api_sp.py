@@ -120,6 +120,14 @@ def test_sem_aluguel_informado_a_rentabilidade_locaticia_fica_vazia():
     }
 
 
+def test_aluguel_zero_informado_nao_vira_dado_ausente():
+    assert pricing.rental_yield(1_000_000, 0) == {
+        "aluguel_mensal": 0.0,
+        "yield_mensal_pct": 0.0,
+        "yield_anual_pct": 0.0,
+    }
+
+
 def test_rentabilidade_mensal_compara_aluguel_valorizacao_e_indices(client):
     corpo = client.get("/api/rentabilidade/mensal", params={"carteira_id": "u702", "meses": 24}).json()
     serie = corpo["serie"]

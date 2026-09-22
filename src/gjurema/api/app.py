@@ -329,7 +329,7 @@ def rentabilidade_mensal(carteira_id: str, meses: int = Query(default=36, ge=6, 
         for competencia, preco_m2 in mensal.items():
             valor = float(preco_m2) * area
             valorizacao = None if anterior is None else (valor / anterior - 1) * 100
-            rendimento = float(aluguel) / valor * 100 if aluguel else None
+            rendimento = None if aluguel is None else float(aluguel) / valor * 100
             serie.append(
                 {
                     "ano_mes": competencia.date().isoformat(),
@@ -351,7 +351,7 @@ def rentabilidade_mensal(carteira_id: str, meses: int = Query(default=36, ge=6, 
     return {
         "fonte": f"ITBI público · série do {fonte_serie} + BCB/SGS",
         "imovel": item["nome"],
-        "aluguel_mensal": float(aluguel) if aluguel else None,
+        "aluguel_mensal": None if aluguel is None else float(aluguel),
         "serie": serie,
         "indices": _records(indices_frame),
     }

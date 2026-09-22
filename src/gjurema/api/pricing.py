@@ -123,7 +123,7 @@ def rental_yield(valor_atualizado: float, aluguel_mensal: float | None) -> dict:
     Aluguel não existe no ITBI: só é calculado quando o cliente informa o
     valor vigente na carteira.
     """
-    if not aluguel_mensal or valor_atualizado <= 0:
+    if aluguel_mensal is None or valor_atualizado <= 0:
         return {"aluguel_mensal": None, "yield_mensal_pct": None, "yield_anual_pct": None}
     aluguel = float(aluguel_mensal)
     return {

@@ -403,7 +403,8 @@ const NAVY="#0D1B2A", GOLD="#A1862E", STEEL="#4A6A8A", TEAL="#2E6B62",
 const PALETA=[NAVY,GOLD,STEEL,TEAL,CLAY,GREY];
 const fmt = v => "R$ " + Number(v).toLocaleString("pt-BR",{maximumFractionDigits:0});
 const fm2 = v => Number(v).toLocaleString("pt-BR",{maximumFractionDigits:0});
-const pct = v => (v>=0?"+":"") + Number(v).toFixed(1) + "%";
+const num = (v,d=1) => Number(v).toLocaleString("pt-BR",{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct = v => (v>=0?"+":"") + num(v) + "%";
 /* texto de contrato e de endereço entra em innerHTML: escapar antes de interpolar */
 const esc = v => String(v==null?"":v).replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
@@ -498,24 +499,28 @@ function desenhaImovel(){
     <div><span>Mediana do bairro (ITBI)</span><b class="tnum">${p.mediana_bairro_m2?fmt(p.mediana_bairro_m2)+"/m²":"—"}</b></div>`;
 
   const aluguel = p.aluguel_mensal;
+  const temAluguel = aluguel !== null && aluguel !== undefined;
   document.getElementById("h-kpi").innerHTML = `
-    <div class="kpi"><div class="eyebrow">Área privativa</div><div class="n tnum">${im.priv} m²</div>
-      <div class="s mut">total ${im.total} m²</div></div>
+    <div class="kpi"><div class="eyebrow">Área privativa</div><div class="n tnum">${num(im.priv,2)} m²</div>
+      <div class="s mut">total ${num(im.total,2)} m²</div></div>
     <div class="kpi"><div class="eyebrow">Valor aluguel atual</div>
-      <div class="n tnum">${aluguel?fmt(aluguel):"—"}</div>
-      <div class="s mut">${aluguel?"informado na carteira · por mês":"não existe no ITBI"}
+      <div class="n tnum">${temAluguel?fmt(aluguel):"—"}</div>
+      <div class="s mut">${temAluguel?"informado na carteira · por mês":"não existe no ITBI"}
         <a href="#" id="edita-aluguel" style="color:var(--gold);text-decoration:none">· editar</a></div></div>
     <div class="kpi"><div class="eyebrow">Rentabilidade aluguel/valor atual</div>
-      <div class="n tnum">${aluguel?p.yield_mensal_pct.toFixed(2)+"% a.m.":"—"}</div>
-      <div class="s mut">${aluguel?p.yield_anual_pct.toFixed(2)+"% ao ano sobre o valor atualizado":"informe o aluguel para calcular"}</div></div>
+      <div class="n tnum">${temAluguel?num(p.yield_mensal_pct,2)+"% a.m.":"—"}</div>
+      <div class="s mut">${temAluguel?num(p.yield_anual_pct,2)+"% ao ano sobre o valor atualizado":"informe o aluguel para calcular"}</div></div>
     <div class="kpi"><div class="eyebrow">Matrícula</div><div class="n" style="font-size:19px">${esc(im.matricula||"—")}</div>
       <div class="s mut">fração ${esc(im.fracao)}</div></div>`;
   document.getElementById("edita-aluguel").onclick = async ev=>{
     ev.preventDefault();
     const valor = prompt("Valor do aluguel atual (R$/mês):", aluguel || "");
     if(valor===null) return;
-    await api(`/carteira/${im.id}`, null, {metodo:"PATCH", corpo:{aluguelMensal: valor}});
-    await recarregaCarteira();
+    try{
+      await api(`/carteira/${im.id}`, null, {metodo:"PATCH", corpo:{aluguelMensal: valor}});
+      selIdx = [];                                 // a série do aluguel passa a existir
+      await recarregaCarteira();
+    }catch(e){ alert(e.message); }
   };
 
   document.getElementById("h-fluxo").innerHTML = im.fluxo.map(f=>
@@ -600,12 +605,12 @@ async function desenhaRentMensal(){
   const dados = await api("/rentabilidade/mensal", {carteira_id: imovelSel});
   const meses = dados.serie.map(p=>p.ano_mes.slice(0,7));
   INDICES = {};
-  if(dados.aluguel_mensal)
+  if(dados.aluguel_mensal !== null)
     INDICES.aluguel = {nome:"Aluguel do imóvel", cor:NAVY,
       serie:dados.serie.map(p=>({x:p.ano_mes.slice(0,7), v:p.aluguel_pct}))};
   INDICES.valorizacao = {nome:"Valorização do imóvel (ITBI)", cor:GOLD,
     serie:dados.serie.map(p=>({x:p.ano_mes.slice(0,7), v:p.valorizacao_pct}))};
-  if(dados.aluguel_mensal)
+  if(dados.aluguel_mensal !== null)
     INDICES.total = {nome:"Aluguel + valorização", cor:TEAL,
       serie:dados.serie.map(p=>({x:p.ano_mes.slice(0,7), v:p.total_pct}))};
   dados.indices.forEach(p=>{
@@ -616,10 +621,11 @@ async function desenhaRentMensal(){
 
   selIdx = selIdx.filter(k=>INDICES[k]);
   if(selIdx.length<=1)
-    selIdx = ["aluguel","valorizacao","cdi","ipca"].filter(k=>INDICES[k]);
+    selIdx = ["valorizacao","cdi","ipca"].filter(k=>INDICES[k]);
+  if(INDICES.aluguel && !selIdx.includes("aluguel")) selIdx.unshift("aluguel");
 
   document.getElementById("rent-tit").textContent = "Rendimento mensal · aluguel vs. índices";
-  document.getElementById("rent-nota").textContent = dados.aluguel_mensal
+  document.getElementById("rent-nota").textContent = dados.aluguel_mensal !== null
     ? `${dados.fonte} · aluguel de ${fmt(dados.aluguel_mensal)}/mês sobre o valor do imóvel mês a mês. Taxas mensais, não acumuladas.`
     : `${dados.fonte} · sem aluguel informado para este imóvel: cadastre o valor na aba Precificação para ver o rendimento locatício.`;
   pillsRent();
@@ -631,8 +637,8 @@ async function desenhaRentMensal(){
     borderWidth:k==="aluguel"?3:2,tension:.3,pointRadius:2,spanGaps:true}))},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,padding:16}},
-        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y.toFixed(2)}% no mês`}}},
-      scales:{y:{ticks:{callback:v=>v.toFixed(2)+"%"}}}}});
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${num(c.parsed.y,2)}% no mês`}}},
+      scales:{y:{ticks:{callback:v=>num(v,2)+"%"}}}}});
 
   const media = s => { const v = s.map(p=>p.v).filter(x=>x!==null && x!==undefined);
     return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null; };
@@ -641,8 +647,8 @@ async function desenhaRentMensal(){
     const m = media(INDICES[k].serie);
     if(m===null) return;
     kb.innerHTML += `<div class="kpi"><div class="eyebrow">${esc(INDICES[k].nome)}</div>
-      <div class="n tnum">${m.toFixed(2)}%</div>
-      <div class="s mut">média mensal · ${((Math.pow(1+m/100,12)-1)*100).toFixed(1)}% ao ano</div></div>`;
+      <div class="n tnum">${num(m,2)}%</div>
+      <div class="s mut">média mensal · ${num((Math.pow(1+m/100,12)-1)*100)}% ao ano</div></div>`;
   });
 }
 
@@ -832,6 +838,11 @@ function leFormulario(){
   });
   return dados;
 }
+function limpaFormulario(){
+  CAMPOS.filter(c=>c.tipo!=="fluxo").forEach(c=>{
+    document.getElementById("f-"+c.nome).value = c.padrao!==undefined ? c.padrao : "";
+  });
+}
 function preencheFormulario(valores){
   Object.entries(valores).forEach(([k,v])=>{
     const el = document.getElementById("f-"+k);
@@ -884,6 +895,7 @@ document.getElementById("cad-ler").onclick = async ()=>{
   [...entrada.files].forEach(f=>form.append("arquivos", f));
   try{
     const r = await api("/carteira/extrair", null, {form});
+    limpaFormulario();                             // senão campos do documento anterior se misturam
     preencheFormulario(r.campos);
     const achados = Object.keys(r.campos).length;
     saida.innerHTML = `<table class="tb"><thead><tr><th>Arquivo</th><th>Campos reconhecidos</th></tr></thead><tbody>` +
@@ -893,9 +905,7 @@ document.getElementById("cad-ler").onclick = async ()=>{
   }catch(e){ saida.innerHTML = `<div class="vazio"><b>Não foi possível ler</b>${esc(e.message)}</div>`; }
 };
 document.getElementById("cad-limpar").onclick = ()=>{
-  CAMPOS.filter(c=>c.tipo!=="fluxo").forEach(c=>{
-    document.getElementById("f-"+c.nome).value = c.padrao!==undefined ? c.padrao : "";
-  });
+  limpaFormulario();
   document.getElementById("cad-msg").textContent = "";
 };
 document.getElementById("cad-salvar").onclick = async ()=>{
