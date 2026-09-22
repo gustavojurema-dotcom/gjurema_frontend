@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from gjurema import features_sp
 from gjurema.api import app as api_app
 from gjurema.api import artifacts, pricing
+from gjurema.api import carteira as carteira_store
 from gjurema.models import price_sp
 
 CARTEIRA = [
@@ -24,6 +25,7 @@ CARTEIRA = [
         "total": 134.0,
         "padrao": 4,
         "preco": 1_071_500,
+        "aluguelMensal": 6_000,
         "dataCompra": "2022-06-01",
         "corretagem": 53_253.55,
         "matricula": "157.690",
@@ -55,6 +57,14 @@ def market(sp_transactions) -> artifacts.MarketData:
                 "acumulado_pct": [0.0, 13.0, 26.5, 0.0, 4.6, 9.2],
             }
         ),
+        indices_monthly=pd.DataFrame(
+            {
+                "indice": ["cdi"] * 3,
+                "nome": ["CDI"] * 3,
+                "ano_mes": pd.to_datetime(["2024-08-01", "2024-09-01", "2024-10-01"]),
+                "taxa_pct": [0.9, 0.87, 0.93],
+            }
+        ),
         metrics={"cobertura": {"transacoes": len(sp_transactions), "inicio": "2022-01-01"}},
         model=model,
     )
@@ -64,7 +74,7 @@ def market(sp_transactions) -> artifacts.MarketData:
 def client(market, tmp_path, monkeypatch) -> TestClient:
     carteira_path = tmp_path / "carteira.json"
     carteira_path.write_text(json.dumps(CARTEIRA))
-    monkeypatch.setattr(api_app, "CARTEIRA_PATH", carteira_path)
+    monkeypatch.setattr(carteira_store, "CARTEIRA_PATH", carteira_path)
     monkeypatch.setattr(artifacts, "available", lambda: True)
     monkeypatch.setattr(artifacts, "market_data", lambda: market)
     return TestClient(api_app.app)
@@ -89,6 +99,99 @@ def test_carteira_precifica_cada_imovel_do_cliente(client):
     assert estimativa["delta_pct"] == pytest.approx(
         (estimativa["valor_justo"] / 1_071_500 - 1) * 100
     )
+
+
+def test_carteira_calcula_rentabilidade_do_aluguel_sobre_o_valor_atualizado(client):
+    estimativa = client.get("/api/carteira").json()["itens"][0]["precificacao"]
+    atualizado = estimativa["valor_atualizado"]
+
+    assert atualizado == estimativa["valor_justo"]
+    assert estimativa["preco_m2_atualizado_privativo"] == pytest.approx(atualizado / 71.0)
+    assert estimativa["aluguel_mensal"] == 6_000
+    assert estimativa["yield_mensal_pct"] == pytest.approx(6_000 / atualizado * 100)
+    assert estimativa["yield_anual_pct"] == pytest.approx(12 * estimativa["yield_mensal_pct"])
+
+
+def test_sem_aluguel_informado_a_rentabilidade_locaticia_fica_vazia():
+    assert pricing.rental_yield(1_000_000, None) == {
+        "aluguel_mensal": None,
+        "yield_mensal_pct": None,
+        "yield_anual_pct": None,
+    }
+
+
+def test_aluguel_zero_informado_nao_vira_dado_ausente():
+    assert pricing.rental_yield(1_000_000, 0) == {
+        "aluguel_mensal": 0.0,
+        "yield_mensal_pct": 0.0,
+        "yield_anual_pct": 0.0,
+    }
+
+
+def test_rentabilidade_mensal_compara_aluguel_valorizacao_e_indices(client):
+    corpo = client.get("/api/rentabilidade/mensal", params={"carteira_id": "u702", "meses": 24}).json()
+    serie = corpo["serie"]
+
+    assert corpo["aluguel_mensal"] == 6_000
+    assert 1 < len(serie) <= 24
+    assert serie[0]["valorizacao_pct"] is None  # primeiro mês não tem mês anterior
+    assert serie[1]["aluguel_pct"] == pytest.approx(6_000 / serie[1]["valor_imovel"] * 100)
+    assert serie[1]["total_pct"] == pytest.approx(serie[1]["aluguel_pct"] + serie[1]["valorizacao_pct"])
+    assert {p["indice"] for p in corpo["indices"]} == {"cdi"}
+
+
+def test_cadastro_le_contrato_em_texto_e_grava_na_carteira(client):
+    contrato = (
+        "Edifício Jardim das Acácias\n"
+        "Unidade nº 51 - Rua Capitão Prudente, 209 - Bairro: PINHEIROS\n"
+        "CEP 05421-000\n"
+        "Área privativa: 62,00 m2 - Área total: 110,00 m2\n"
+        "Valor da compra: R$ 980.000,00\n"
+        "Data da compra: 15/03/2023\n"
+        "Aluguel: R$ 4.500,00\n"
+    )
+    leitura = client.post(
+        "/api/carteira/extrair", files={"arquivos": ("contrato.txt", contrato.encode(), "text/plain")}
+    ).json()
+    campos = leitura["campos"]
+    assert campos["preco"] == 980_000.0
+    assert campos["aluguelMensal"] == 4_500.0
+    assert campos["dataCompra"] == "2023-03-15"
+    assert campos["endereco"].startswith("Rua Capitão Prudente")
+    assert campos["priv"] == 62.0 and campos["total"] == 110.0
+
+    criado = client.post("/api/carteira", json={**campos, "unidade": "Unidade 51", "nome": "Jardim das Acácias"})
+    assert criado.status_code == 201
+    item = criado.json()["item"]
+    assert item["bairro"] == "PINHEIROS" and item["segmento"] == "Apartamento"
+
+    precificados = client.get("/api/carteira").json()["itens"]
+    novo = next(i for i in precificados if i["id"] == item["id"])
+    assert novo["precificacao"]["yield_anual_pct"] == pytest.approx(
+        4_500 * 12 / novo["precificacao"]["valor_atualizado"] * 100
+    )
+
+
+def test_cadastro_recusa_imovel_sem_campo_obrigatorio(client):
+    resposta = client.post("/api/carteira", json={"nome": "Sem área", "bairro": "PINHEIROS"})
+    assert resposta.status_code == 422
+    assert "Área privativa" in resposta.json()["detail"]
+
+
+def test_aluguel_pode_ser_atualizado_no_imovel_existente(client):
+    resposta = client.patch("/api/carteira/u702", json={"aluguelMensal": "R$ 7.250,00"})
+    assert resposta.status_code == 200
+    assert resposta.json()["item"]["aluguelMensal"] == 7_250.0
+    assert client.patch("/api/carteira/zzz", json={"aluguelMensal": 100}).status_code == 404
+
+
+def test_campos_do_cadastro_cobrem_o_que_a_precificacao_exige(client):
+    campos = client.get("/api/carteira/campos").json()["campos"]
+    nomes = {campo["nome"] for campo in campos}
+    obrigatorios = {campo["nome"] for campo in campos if campo["obrigatorio"]}
+
+    assert {"bairro", "segmento", "total", "priv", "preco", "dataCompra"} <= obrigatorios
+    assert {"aluguelMensal", "matricula", "endereco", "fluxo"} <= nomes
 
 
 def test_precificacao_de_imovel_fora_da_carteira(client):

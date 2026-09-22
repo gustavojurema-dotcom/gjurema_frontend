@@ -17,11 +17,11 @@ from collections import deque
 from pathlib import Path
 
 import pandas as pd
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
-from gjurema.api import artifacts, pricing
-from gjurema.config import CARTEIRA_PATH
+from gjurema.api import artifacts, extracao, pricing
+from gjurema.api import carteira as carteira_store
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -34,6 +34,8 @@ TOKEN_HEADER = "X-GJurema-Token"
 # cliente monopolize o processo.
 RATE_LIMIT = int(os.getenv("GJUREMA_RATE_LIMIT", "120"))
 RATE_WINDOW_S = 60.0
+
+ARQUIVOS = File(...)
 
 app = FastAPI(title="GJurema · Inteligência de dados imobiliários", version="0.2.0")
 
@@ -77,9 +79,7 @@ def _data() -> artifacts.MarketData:
 
 
 def _carteira() -> list[dict]:
-    if not CARTEIRA_PATH.exists():
-        return []
-    return json.loads(CARTEIRA_PATH.read_text())
+    return carteira_store.load()
 
 
 def _item(item_id: str) -> dict:
@@ -131,6 +131,55 @@ def carteira() -> dict:
         estimativa = pricing.price_portfolio_item(data, item)
         itens.append({**item, "precificacao": estimativa})
     return {"fonte": "Contrato do cliente + ITBI público", "itens": itens}
+
+
+@app.get("/api/carteira/campos")
+def carteira_campos() -> dict:
+    """Esquema do cadastro: o painel monta o formulário a partir daqui."""
+    return {"fonte": "Dados do cliente", "campos": list(carteira_store.CAMPOS)}
+
+
+@app.post("/api/carteira", status_code=201, dependencies=[Depends(require_private)])
+def carteira_criar(payload: dict) -> dict:
+    """Cadastra um imóvel na carteira e já o precifica contra o ITBI."""
+    try:
+        item = carteira_store.create(payload)
+    except carteira_store.ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"fonte": "Dados do cliente", "item": item}
+
+
+@app.patch("/api/carteira/{item_id}", dependencies=[Depends(require_private)])
+def carteira_atualizar(item_id: str, payload: dict) -> dict:
+    """Atualiza campos do imóvel — inclusive o aluguel vigente."""
+    try:
+        item = carteira_store.update(item_id, payload)
+    except carteira_store.ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"imóvel {item_id} não está na carteira") from exc
+    return {"fonte": "Dados do cliente", "item": item}
+
+
+@app.delete("/api/carteira/{item_id}", dependencies=[Depends(require_private)])
+def carteira_remover(item_id: str) -> dict:
+    try:
+        carteira_store.delete(item_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"imóvel {item_id} não está na carteira") from exc
+    return {"removido": item_id}
+
+
+@app.post("/api/carteira/extrair", dependencies=[Depends(require_private)])
+async def carteira_extrair(arquivos: list[UploadFile] = ARQUIVOS) -> dict:
+    """Rascunho de cadastro a partir de contratos em PDF, Word ou imagem.
+
+    Devolve só o que foi reconhecido no documento: o cliente confere e
+    completa antes de gravar.
+    """
+    lidos = [(arquivo.filename or "arquivo", await arquivo.read()) for arquivo in arquivos]
+    resultado = extracao.parse_documents(lidos)
+    return {"fonte": "Documento do cliente", **resultado}
 
 
 @app.get("/api/precificacao")
@@ -248,6 +297,63 @@ def rentabilidade(carteira_id: str) -> dict:
         "ano_base": int(compra.year),
         "serie": imovel,
         "indices": indices(desde=int(compra.year))["series"],
+    }
+
+
+@app.get("/api/rentabilidade/mensal", dependencies=[Depends(require_private)])
+def rentabilidade_mensal(carteira_id: str, meses: int = Query(default=36, ge=6, le=240)) -> dict:
+    """Rendimento mensal do imóvel (aluguel + valorização) contra os índices.
+
+    O ITBI só tem série anual de R$/m², então o valor do imóvel é
+    interpolado mês a mês entre os anos observados.
+    """
+    data = _data()
+    item = _item(carteira_id)
+    area = float(item["total"])
+    aluguel = item.get("aluguelMensal")
+
+    predio_id = pricing.resolve_predio(data, item.get("endereco", ""))
+    fonte_serie = "prédio"
+    frame = data.predio_series[data.predio_series["predio_id"] == predio_id] if predio_id else pd.DataFrame()
+    if frame.empty:
+        fonte_serie = "bairro"
+        frame = data.bairro_series[data.bairro_series["bairro"] == item["bairro"]]
+        frame = frame[frame["segmento"] == item.get("segmento", "Apartamento")]
+        frame = frame.groupby("ano", as_index=False).agg(preco_m2=("preco_m2", "median"))
+
+    serie: list[dict] = []
+    if not frame.empty:
+        anual = frame.sort_values("ano").set_index(pd.to_datetime(frame.sort_values("ano")["ano"], format="%Y"))
+        mensal = anual["preco_m2"].resample("MS").interpolate("linear").dropna().tail(meses)
+        anterior = None
+        for competencia, preco_m2 in mensal.items():
+            valor = float(preco_m2) * area
+            valorizacao = None if anterior is None else (valor / anterior - 1) * 100
+            rendimento = None if aluguel is None else float(aluguel) / valor * 100
+            serie.append(
+                {
+                    "ano_mes": competencia.date().isoformat(),
+                    "valor_imovel": valor,
+                    "aluguel_pct": rendimento,
+                    "valorizacao_pct": valorizacao,
+                    "total_pct": None
+                    if rendimento is None and valorizacao is None
+                    else (rendimento or 0.0) + (valorizacao or 0.0),
+                }
+            )
+            anterior = valor
+
+    indices_frame = data.indices_monthly
+    if not indices_frame.empty and serie:
+        inicio = pd.Timestamp(serie[0]["ano_mes"])
+        indices_frame = indices_frame[indices_frame["ano_mes"] >= inicio]
+
+    return {
+        "fonte": f"ITBI público · série do {fonte_serie} + BCB/SGS",
+        "imovel": item["nome"],
+        "aluguel_mensal": None if aluguel is None else float(aluguel),
+        "serie": serie,
+        "indices": _records(indices_frame),
     }
 
 

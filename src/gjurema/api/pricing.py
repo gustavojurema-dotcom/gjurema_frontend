@@ -101,13 +101,33 @@ def price_portfolio_item(data: MarketData, item: dict) -> dict:
         predio_id=predio_id,
     )
     pago = float(item["preco"])
+    atualizado = estimativa["valor_justo"]
     estimativa.update(
         {
             "predio_id": predio_id,
             "preco_pago": pago,
             "preco_m2_pago_total": pago / float(item["total"]),
             "preco_m2_pago_privativo": pago / float(item["priv"]),
-            "delta_pct": (estimativa["valor_justo"] / pago - 1) * 100,
+            "valor_atualizado": atualizado,
+            "preco_m2_atualizado_privativo": atualizado / float(item["priv"]),
+            "delta_pct": (atualizado / pago - 1) * 100,
+            **rental_yield(atualizado, item.get("aluguelMensal")),
         }
     )
     return estimativa
+
+
+def rental_yield(valor_atualizado: float, aluguel_mensal: float | None) -> dict:
+    """Rentabilidade do aluguel sobre o valor atualizado do imóvel.
+
+    Aluguel não existe no ITBI: só é calculado quando o cliente informa o
+    valor vigente na carteira.
+    """
+    if aluguel_mensal is None or valor_atualizado <= 0:
+        return {"aluguel_mensal": None, "yield_mensal_pct": None, "yield_anual_pct": None}
+    aluguel = float(aluguel_mensal)
+    return {
+        "aluguel_mensal": aluguel,
+        "yield_mensal_pct": aluguel / valor_atualizado * 100,
+        "yield_anual_pct": aluguel * 12 / valor_atualizado * 100,
+    }
